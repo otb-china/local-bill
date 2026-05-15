@@ -18,7 +18,7 @@ export function createEmptyBillItem(): BillItem {
   return {
     id: createId("item"),
     name: "",
-    price: 0,
+    price: "",
   };
 }
 
@@ -43,9 +43,15 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
         ? item.items.map((child: RSA): BillItem => ({
           id: String(child.id || createId("item")),
           name: String(child.name || ""),
-          price: Number(child.price || 0),
+          price: normalizePrice(child.price),
         }))
         : [],
     };
   }).filter((item) => item.name);
+}
+
+function normalizePrice(value: unknown): number | "" {
+  if (value === "" || value === null || value === undefined) return "";
+  const price = Number(value);
+  return Number.isFinite(price) ? price : "";
 }

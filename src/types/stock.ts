@@ -3,7 +3,7 @@ import type { RSA } from "otb-toolkit/src/types";
 export interface BillItem extends RSA {
   id: string;
   name: string;
-  price: number;
+  price: number | "";
 }
 
 export interface Bill extends RSA {

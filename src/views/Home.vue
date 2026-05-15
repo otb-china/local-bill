@@ -60,7 +60,7 @@
           </label>
 
           <div class="detail-total">
-            <span>累计{{ activeBill.items.length }}项</span>
+            <span>累计{{ validActiveBillItems.length }}项</span>
             <strong>¥{{ formatMoney(activeBillTotal) }}</strong>
           </div>
         </div>
@@ -90,28 +90,32 @@
             <span>新增子项</span>
           </button>
 
-          <div v-for="item in activeBill.items" :key="item.id" class="item-row">
-            <label class="item-field item-name-field">
-              <span>名称</span>
-              <input v-model.trim="item.name" class="text-input" placeholder="例如 午餐" @input="touchActiveBill" />
-            </label>
-            <label class="item-field item-price-field">
-              <span>金额</span>
-              <input
-                v-model.number="item.price"
-                class="text-input price-input"
-                type="number"
-                inputmode="decimal"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                @input="touchActiveBill"
-              />
-            </label>
-            <button class="icon-button danger item-delete" type="button" aria-label="删除子项" @click="removeItem(item.id)">
-              <el-icon><Delete /></el-icon>
-            </button>
-          </div>
+          <van-swipe-cell v-for="item in activeBill.items" :key="item.id" class="item-swipe">
+            <div class="item-row">
+              <label class="item-field item-name-field">
+                <span>名称</span>
+                <input v-model.trim="item.name" class="text-input" @input="touchActiveBill" />
+              </label>
+              <label class="item-field item-price-field">
+                <span>金额</span>
+                <input
+                  v-model.number="item.price"
+                  class="text-input price-input"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="0.01"
+                  @input="touchActiveBill"
+                />
+              </label>
+            </div>
+            <template #right>
+              <button class="swipe-delete-action" type="button" aria-label="删除子项" @click="removeItem(item.id)">
+                <el-icon><Delete /></el-icon>
+                <span>删除</span>
+              </button>
+            </template>
+          </van-swipe-cell>
         </div>
       </section>
     </main>
@@ -179,6 +183,7 @@ const themeStyle = computed(() => currentThemeOption.value.variables);
 const activeBill = computed(() => bills.value.find((bill) => bill.id === activeBillId.value));
 const grandTotal = computed(() => bills.value.reduce((total, bill) => total + billTotal(bill), 0));
 const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
+const validActiveBillItems = computed(() => activeBill.value ? getValidItems(activeBill.value.items) : []);
 
 const {
   importExportInfo,
@@ -200,7 +205,7 @@ const {
 watch(bills, saveBills, { deep: true });
 
 function billTotal(bill: Bill) {
-  return sumBillItems(bill.items);
+  return sumBillItems(getValidItems(bill.items));
 }
 
 function saveBills() {
@@ -239,6 +244,7 @@ function openBill(id: string) {
 }
 
 function closeBill() {
+  pruneActiveBillInvalidItems();
   activeBillId.value = "";
 }
 
@@ -249,7 +255,32 @@ function touchActiveBill() {
 
 function addItem() {
   if (!activeBill.value) return;
+  if (!canAppendItem()) {
+    showToast("请先填写当前子项的名称和价格");
+    return;
+  }
   activeBill.value.items.unshift(createEmptyBillItem());
+  touchActiveBill();
+}
+
+function canAppendItem() {
+  if (!activeBill.value) return false;
+  return activeBill.value.items.every(isValidItem);
+}
+
+function isValidItem(item: Bill["items"][number]) {
+  return Boolean(item.name.trim()) && item.price !== "" && Number.isFinite(Number(item.price));
+}
+
+function getValidItems(items: Bill["items"]) {
+  return items.filter(isValidItem);
+}
+
+function pruneActiveBillInvalidItems() {
+  if (!activeBill.value) return;
+  const validItems = getValidItems(activeBill.value.items);
+  if (validItems.length === activeBill.value.items.length) return;
+  activeBill.value.items = validItems;
   touchActiveBill();
 }
 
@@ -287,9 +318,16 @@ async function shareBillImage() {
 }
 
 function createBillImage(bill: Bill) {
+  const validItems = getValidItems(bill.items);
   const width = 900;
   const rowHeight = 64;
-  const height = Math.max(520, 260 + bill.items.length * rowHeight);
+  const listStartY = 256;
+  const rowBottomOffset = 10;
+  const footerGap = 50;
+  const footerBottomSpace = 84;
+  const listHeight = validItems.length ? (validItems.length - 1) * rowHeight + rowBottomOffset : 0;
+  const footerY = listStartY + listHeight + footerGap;
+  const height = Math.max(560, footerY + footerBottomSpace);
   const canvas = document.createElement("canvas");
   const pixelRatio = window.devicePixelRatio || 1;
   canvas.width = width * pixelRatio;
@@ -311,7 +349,7 @@ function createBillImage(bill: Bill) {
   ctx.fillText(bill.name || "未命名账单", 88, 124);
   ctx.fillStyle = "#72808c";
   ctx.font = "24px Arial, sans-serif";
-  ctx.fillText(`${bill.items.length} 项`, 88, 164);
+  ctx.fillText(`${validItems.length} 项`, 88, 164);
 
   ctx.fillStyle = "#1f6b7b";
   ctx.font = "700 44px Arial, sans-serif";
@@ -319,8 +357,8 @@ function createBillImage(bill: Bill) {
   ctx.fillText(`¥${formatMoney(billTotal(bill))}`, width - 88, 140);
   ctx.textAlign = "left";
 
-  let y = 224;
-  bill.items.forEach((item, index) => {
+  let y = listStartY;
+  validItems.forEach((item, index) => {
     ctx.fillStyle = index % 2 === 0 ? "#f7f9fc" : "#ffffff";
     roundRect(ctx, 88, y - 42, width - 176, 52, 10);
     ctx.fill();
@@ -337,7 +375,7 @@ function createBillImage(bill: Bill) {
 
   ctx.fillStyle = "#72808c";
   ctx.font = "18px Arial, sans-serif";
-  ctx.fillText("Local Bill", 88, height - 84);
+  ctx.fillText("Local Bill", 88, footerY);
   return canvas.toDataURL("image/png");
 }
 
@@ -672,10 +710,18 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.item-swipe {
+  border-radius: 14px;
+}
+
+.item-swipe :deep(.van-swipe-cell__wrapper) {
+  border-radius: 14px;
+}
+
 .item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(118px, 160px) 42px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(104px, 142px);
+  gap: 12px;
   align-items: end;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--accent-border) 34%, var(--divider));
@@ -702,9 +748,22 @@ onUnmounted(() => {
   text-align: right;
 }
 
-.item-delete {
-  width: 42px;
-  height: 42px;
+.swipe-delete-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  width: 72px;
+  height: 100%;
+  min-height: 84px;
+  margin-left: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .home-page :deep(.van-popup) {
@@ -756,7 +815,7 @@ onUnmounted(() => {
   }
 
   .item-row {
-    grid-template-columns: minmax(0, 1fr) minmax(82px, 96px) 40px;
+    grid-template-columns: minmax(0, 1fr) minmax(82px, 96px);
     gap: 8px;
     padding: 12px;
   }
@@ -768,10 +827,9 @@ onUnmounted(() => {
   .item-row .text-input {
     padding: 0 10px;
   }
-  
-  .item-delete {
-    width: 40px;
-    height: 40px;
+  .swipe-delete-action {
+    width: 64px;
+    min-height: 78px;
   }
 }
 </style>
