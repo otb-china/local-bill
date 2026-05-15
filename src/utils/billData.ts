@@ -1,5 +1,5 @@
 import type { RSA } from "otb-toolkit/src/types";
-import type { Bill, BillItem, DeletedBill } from "@/types/stock";
+import type { Bill, BillItem, DeletedBill } from "@/types/bill";
 
 export const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 

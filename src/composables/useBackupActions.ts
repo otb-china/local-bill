@@ -2,8 +2,8 @@ import { computed, ref, type Ref } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
 import { LStorage } from "@/utils/localStorage.ts";
-import { normalizeBills, normalizeDeletedBills } from "@/utils/stockData.ts";
-import type { Bill, DeletedBill, LocalBillBackupData } from "@/types/stock";
+import { normalizeBills, normalizeDeletedBills } from "@/utils/billData.ts";
+import type { Bill, DeletedBill, LocalBillBackupData } from "@/types/bill";
 
 interface UseBackupActionsOptions {
   bills: Ref<Bill[]>;

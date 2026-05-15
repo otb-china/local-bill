@@ -192,9 +192,9 @@ import {
   normalizeDeletedBills,
   normalizeBills,
   sumBillItems,
-} from "@/utils/stockData.ts";
+} from "@/utils/billData.ts";
 import type { ThemeKey } from "@/config/themes";
-import type { Bill, DeletedBill } from "@/types/stock";
+import type { Bill, DeletedBill } from "@/types/bill";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
