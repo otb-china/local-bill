@@ -2,20 +2,11 @@ import { computed, ref, type Ref } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
 import { LStorage } from "@/utils/localStorage.ts";
-import { assertValidBackupData, resolveBackupData } from "@/utils/stockData.ts";
-import type { BackupData, Material, Order, OrderMonth, Product } from "@/types/stock";
-
-interface OrderState {
-  data: Order[];
-  monthData: OrderMonth[];
-  checkedMonth: string;
-}
+import { normalizeBills } from "@/utils/stockData.ts";
+import type { Bill, LocalBillBackupData } from "@/types/stock";
 
 interface UseBackupActionsOptions {
-  materials: Ref<Material[]>;
-  products: Ref<Product[]>;
-  orderInfo: Ref<OrderState>;
-  ordersExpanded: Ref<boolean>;
+  bills: Ref<Bill[]>;
   settingsPopup: Ref<boolean>;
   dateFormat: string;
   initData: () => void;
@@ -31,11 +22,11 @@ export function useBackupActions(options: UseBackupActionsOptions) {
   });
 
   const importExportSummary = computed(() => {
-    return `导入后将覆盖 ${options.materials.value.length} 项备料 · ${options.products.value.length} 个货品 · ${options.orderInfo.value.data.length} 条订单`;
+    return `导入后将覆盖 ${options.bills.value.length} 个账单`;
   });
 
   const hasImportOverwriteData = computed(() => {
-    return options.materials.value.length > 0 || options.products.value.length > 0 || options.orderInfo.value.data.length > 0;
+    return options.bills.value.length > 0;
   });
 
   function openImportExport() {
@@ -47,9 +38,7 @@ export function useBackupActions(options: UseBackupActionsOptions) {
 
   function createBackupData() {
     return {
-      materials: options.materials.value,
-      products: options.products.value,
-      orders: options.orderInfo.value.data,
+      bills: options.bills.value,
     };
   }
 
@@ -77,18 +66,11 @@ export function useBackupActions(options: UseBackupActionsOptions) {
   function resetAllData() {
     showConfirmDialog({
       title: "提示",
-      message: "确认清除所有备料、货品和订单数据吗？",
+      message: "确认清除所有账单数据吗？",
       width: "250px",
     }).then(() => {
-      options.materials.value = [];
-      options.products.value = [];
-      options.orderInfo.value.data = [];
-      options.orderInfo.value.monthData = [];
-      options.orderInfo.value.checkedMonth = "";
-      options.ordersExpanded.value = false;
-      LStorage.data.setter([]);
-      LStorage.productData.setter([]);
-      LStorage.orderData.setter([]);
+      options.bills.value = [];
+      LStorage.new("localBillData").remove();
       options.settingsPopup.value = false;
       showToast("数据已重置");
     }).catch(() => {
@@ -97,15 +79,15 @@ export function useBackupActions(options: UseBackupActionsOptions) {
 
   function importData() {
     try {
-      const parsedData = JSON.parse(importInfo.value.dataStr) as BackupData;
+      const parsedData = JSON.parse(importInfo.value.dataStr) as LocalBillBackupData;
       if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
         throw new Error("Invalid backup data");
       }
-      const { materials, products, orders } = resolveBackupData(parsedData);
-      assertValidBackupData({ materials, products, orders });
-      LStorage.data.setter(materials);
-      LStorage.productData.setter(products);
-      LStorage.orderData.setter(orders);
+      const bills = normalizeBills(parsedData.bills);
+      if (!Array.isArray(parsedData.bills) || bills.length !== parsedData.bills.length) {
+        throw new Error("Invalid bills");
+      }
+      LStorage.new("localBillData").setter(bills);
       options.initData();
       importExportInfo.value.show = false;
       importInfo.value.dataStr = "";

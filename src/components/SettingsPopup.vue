@@ -37,7 +37,7 @@
           </span>
           <span>
             <strong>导出总数据</strong>
-            <em>下载备料、货品和订单备份文件</em>
+            <em>下载本地账单备份文件</em>
           </span>
         </button>
 
@@ -47,7 +47,7 @@
           </span>
           <span>
             <strong>导入总数据</strong>
-            <em>上传备份文件后恢复全部数据</em>
+            <em>上传备份文件后恢复账单</em>
           </span>
         </button>
 
@@ -57,7 +57,7 @@
           </span>
           <span>
             <strong>重置数据</strong>
-            <em>清除备料、货品和订单全部数据</em>
+            <em>清除全部本地账单</em>
           </span>
         </button>
       </div>

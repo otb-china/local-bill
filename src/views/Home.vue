@@ -3,9 +3,12 @@
     <header ref="headerSection" class="page-header">
       <div>
         <p class="hero-tag">Local Bill</p>
-        <h1>备料统计</h1>
+        <h1>{{ activeBill ? "账单明细" : "本地账单" }}</h1>
       </div>
       <div class="header-actions">
+        <button v-if="activeBill" class="header-icon" type="button" @click="closeBill">
+          <el-icon><Back /></el-icon>
+        </button>
         <button v-if="showScrollTop" class="header-icon" type="button" @click="scrollToTop">
           <el-icon><Top /></el-icon>
         </button>
@@ -15,191 +18,103 @@
       </div>
     </header>
 
-    <section class="hero-card">
-      <div class="hero-main">
+    <main v-if="!activeBill" class="bill-list-view">
+      <section class="summary-band">
         <div>
-          <p class="hero-tag">Overview</p>
+          <p class="section-tag">Total</p>
+          <strong>¥{{ formatMoney(grandTotal) }}</strong>
         </div>
-      </div>
+        <span>{{ bills.length }} 个账单</span>
+      </section>
 
-      <div class="hero-stats">
-        <StatCard
-          title="收入"
-          :value="`¥${orderTotal}`"
-          :footer="`共 ${orderInfo.data.length} 单`"
-          variant="income"
-          @click="scrollToOrders"
-        />
-        <StatCard
-          title="备料"
-          :value="materialsSummary.totalKinds"
-          :footer="materialsSummary.footerText"
-          variant="materials"
-          @click="openMaterialsPopup('materials')"
-        />
-        <StatCard
-          title="货品"
-          :value="products.length"
-          :footer="productsSummary.footerText"
-          variant="goods"
-          @click="openMaterialsPopup('products')"
-        />
-      </div>
-
-      <div class="craftable-card">
-        <div class="craftable-head">
-          <strong>可制作货品</strong>
-          <span>{{ craftableProducts.length }}种</span>
-        </div>
-
-        <div class="craftable-list" v-if="craftableProducts.length">
-          <div v-for="product in craftableProducts" :key="product.id" class="craftable-row">
-            <span class="bolder">{{ product.name }}</span>
-            <strong>可制 {{ craftableCountForProduct(product) }}</strong>
-          </div>
-        </div>
-        <div v-else class="craftable-empty">
-          {{ !data.length ? "还没有配置备料" : (products.length ? "当前没有可制作的正常货品" : "还没有配置货品") }}
-        </div>
-      </div>
-
-      <div class="craftable-card warning-materials-card">
-        <div class="craftable-head">
-          <strong>预警备料</strong>
-          <span>{{ warningMaterials.length }}项</span>
-        </div>
-
-        <div class="warning-materials-list" v-if="warningMaterials.length">
-          <div v-for="item in warningMaterials" :key="item.id" class="warning-material-row">
-            <span class="bolder MB6">{{ item.name }}</span>
-            <div class="warning-material-meta">
-              <small>库存 {{ item.num }}</small>
-              <strong :class="materialStatusClass(item)">
-                {{ materialStatus(item) === "danger" ? "缺货" : "预警" }}
-              </strong>
-            </div>
-          </div>
-        </div>
-        <div v-else class="craftable-empty">当前没有预警或缺货备料</div>
-      </div>
-    </section>
-
-    <section ref="ordersSection" class="orders-panel">
-      <div class="section-row">
-        <div>
-          <p class="section-tag">Orders</p>
-          <h2>订单记录</h2>
-        </div>
-        <div class="orders-head-actions">
-          <el-button class="create-order-btn" round size="small" @click="openCreateOrder">新增订单</el-button>
-        </div>
-      </div>
-
-      <div class="month-filter" v-if="orderInfo.monthData.length">
+      <section class="bill-grid">
         <button
-          v-for="item in orderInfo.monthData"
-          :key="item.month"
-          class="month-chip"
-          :class="{ active: orderInfo.checkedMonth === item.month }"
-          @click="monthChange(item.month)"
+          v-for="bill in bills"
+          :key="bill.id"
+          class="bill-card"
+          type="button"
+          @click="openBill(bill.id)"
         >
-          <span>{{ item.month }}</span>
-          <strong>¥{{ item.value }}</strong>
+          <span>{{ bill.name }}</span>
+          <strong>¥{{ formatMoney(billTotal(bill)) }}</strong>
+          <small>{{ bill.items.length }} 项</small>
         </button>
+
+        <button class="add-bill-card" type="button" @click="addBill">
+          <el-icon><Plus /></el-icon>
+        </button>
+      </section>
+
+      <div v-if="!bills.length" class="empty-state">
+        <strong>还没有账单</strong>
+        <span>点击加号创建第一张本地账单。</span>
       </div>
+    </main>
 
-      <van-cell-group inset v-if="OrderData.length">
-        <van-cell class="summary-cell">
-          <template #title>
-            <span class="summary-title">货品订单</span>
-          </template>
-          <template #value>
-            <div class="summary-actions">
-              <span class="summary-count">{{ OrderData.length }}条</span>
-            </div>
-          </template>
-        </van-cell>
+    <main v-else class="bill-detail-view">
+      <section class="bill-editor">
+        <div class="detail-summary">
+          <label class="field-label title-field">
+            <span>BILL NAME</span>
+            <input v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
+          </label>
 
-        <van-swipe-cell v-for="item in visibleOrders" :key="item.id">
-          <van-cell
-            class="order-cell"
-            :title="item.title"
-            :label="item.orderDate"
-            :value="`¥${item.value}`"
-          />
-          <template #right>
-            <van-button square type="primary" class="swipe-btn" text="编辑" @click="beforeUpd(item)" />
-            <van-button square type="danger" class="swipe-btn" text="删除" @click="del(item)" />
-          </template>
-        </van-swipe-cell>
+          <div class="detail-total">
+            <span>累计{{ activeBill.items.length }}项</span>
+            <strong>¥{{ formatMoney(activeBillTotal) }}</strong>
+          </div>
+        </div>
 
-        <van-cell v-if="OrderData.length > orderPreviewLimit" class="orders-toggle-cell" center>
-          <button class="orders-toggle-btn" type="button" @click="ordersExpanded = !ordersExpanded">
-            {{ ordersExpanded ? "收起订单" : `展开剩余 ${collapsedOrdersCount} 条` }}
+        <div class="detail-actions">
+          <button class="text-action" type="button" @click="shareBillImage">
+            <el-icon><Share /></el-icon>
+            <span>生成明细图片</span>
           </button>
-        </van-cell>
-      </van-cell-group>
+          <button class="text-action danger" type="button" @click="removeActiveBill">
+            <el-icon><Delete /></el-icon>
+            <span>删除账单</span>
+          </button>
+        </div>
+      </section>
 
-      <div v-else class="orders-empty">
-        <strong>还没有订单记录</strong>
-        <span>
-          {{
-            !data.length
-              ? "先配置备料，再配置货品，之后就可以记录订单。"
-              : (products.length ? "新增订单后，这里会按月份汇总收入。" : "先配置货品，再开始记录订单。")
-          }}
-        </span>
-      </div>
-    </section>
+      <section class="items-panel">
+        <div class="section-row">
+          <div>
+            <p class="section-tag">Items</p>
+          </div>
+        </div>
 
-    <MaterialManagePopup
-      v-if="materialsPopup.tab === 'materials'"
-      v-model:show="materialsPopup.show"
-      :description="materialsPopupDescription"
-      :create-text="materialsPopupCreateText"
-      :groups="materialManageGroups"
-      :material-status-class="materialStatusClass"
-      :material-status-text="materialStatusText"
-      :material-related-summary="materialRelatedSummary"
-      :material-craftable-count="materialCraftableCount"
-      @create="openMaterialEditor"
-      @toggle-group="toggleMaterialGroup"
-      @edit="openMaterialEditor"
-      @remove="removeMaterial"
-    />
+        <div class="item-list">
+          <button class="add-item-row" type="button" @click="addItem">
+            <el-icon><Plus /></el-icon>
+            <span>新增子项</span>
+          </button>
 
-    <ProductManagePopup
-      v-else
-      v-model:show="materialsPopup.show"
-      :description="materialsPopupDescription"
-      :create-text="materialsPopupCreateText"
-      :products="productsList"
-      :product-status-class="productStatusClass"
-      :craftable-count-for-product="craftableCountForProduct"
-      :recipe-preview="recipePreview"
-      @create="openProductEditor"
-      @toggle-status="toggleProductStatus"
-      @edit="openProductEditor"
-      @remove="removeProduct"
-    />
-
-    <MaterialEditorPopup
-      v-model:show="materialEditor.show"
-      :type="materialEditor.type"
-      :form="materialEditor.form"
-      @submit="submitMaterialEditor"
-    />
-
-    <ProductEditorPopup
-      v-model:show="productEditor.show"
-      :type="productEditor.type"
-      :form="productEditor.form"
-      :available-materials-for-recipe="availableMaterialsForRecipe"
-      @add-recipe="addRecipeItem"
-      @recipe-material-change="onRecipeMaterialChange"
-      @remove-recipe="removeRecipeItem"
-      @submit="submitProductEditor"
-    />
+          <div v-for="item in activeBill.items" :key="item.id" class="item-row">
+            <label class="item-field item-name-field">
+              <span>名称</span>
+              <input v-model.trim="item.name" class="text-input" placeholder="例如 午餐" @input="touchActiveBill" />
+            </label>
+            <label class="item-field item-price-field">
+              <span>金额</span>
+              <input
+                v-model.number="item.price"
+                class="text-input price-input"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                @input="touchActiveBill"
+              />
+            </label>
+            <button class="icon-button danger item-delete" type="button" aria-label="删除子项" @click="removeItem(item.id)">
+              <el-icon><Delete /></el-icon>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <SettingsPopup
       v-model:show="settingsPopup"
@@ -222,144 +137,48 @@
       @file-error="showToast"
       @import="importData"
     />
-
-    <OrderEditorPopup
-      v-model:show="orderInfo.show"
-      v-model:calculation="calculation"
-      :type="orderInfo.type"
-      :form="orderInfo.form"
-      :products="activeOrderProducts"
-      :can-sync-calculation="canSyncCalculation"
-      :craftable-count-for-product="craftableCountForProduct"
-      @product-change="onProductChange"
-      @date-change="setOrderDate"
-      @submit="orderSubmit"
-    />
   </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { LStorage } from "@/utils/localStorage.ts";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { showConfirmDialog, showToast } from "vant";
+import { Back, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
-import MaterialEditorPopup from "@/components/MaterialEditorPopup.vue";
-import MaterialManagePopup from "@/components/MaterialManagePopup.vue";
-import OrderEditorPopup from "@/components/OrderEditorPopup.vue";
-import ProductEditorPopup from "@/components/ProductEditorPopup.vue";
-import ProductManagePopup from "@/components/ProductManagePopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
-import StatCard from "@/components/StatCard.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
 import { useBackupActions } from "@/composables/useBackupActions";
-import { useMaterialEditor } from "@/composables/useMaterialEditor";
-import { useMaterialStatus } from "@/composables/useMaterialStatus";
-import { useOrderActions } from "@/composables/useOrderActions";
-import { useProductEditor } from "@/composables/useProductEditor";
-import type { ThemeKey } from "@/config/themes";
-import type {
-  ManageTab,
-  Material,
-  MaterialGroupKey,
-  Product,
-} from "@/types/stock";
+import { LStorage } from "@/utils/localStorage.ts";
 import {
-  normalizeMaterials,
-  normalizeOrders,
-  normalizeProducts,
+  createEmptyBill,
+  createEmptyBillItem,
+  formatMoney,
+  normalizeBills,
+  sumBillItems,
 } from "@/utils/stockData.ts";
-import { showToast } from "vant";
-import { Setting, Top } from "@element-plus/icons-vue";
+import type { ThemeKey } from "@/config/themes";
+import type { Bill } from "@/types/stock";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
-const TOP_SCROLL_GAP = 10;
-const ORDER_PREVIEW_LIMIT = 10;
-
-const MATERIAL_GROUP_META = [
-  { key: "danger", title: "缺货" },
-  { key: "warning", title: "预警" },
-  { key: "safe", title: "正常" },
-  { key: "unlinked", title: "未关联" },
-] as const satisfies { key: MaterialGroupKey; title: string }[];
-
-const MATERIAL_GROUP_RANK: Record<MaterialGroupKey, number> = {
-  danger: 0,
-  warning: 1,
-  safe: 2,
-  unlinked: 3,
-};
 
 const headerSection = ref<HTMLElement | null>(null);
-const ordersSection = ref<HTMLElement | null>(null);
 const showScrollTop = ref(false);
-const ordersExpanded = ref(false);
-const orderPreviewLimit = ORDER_PREVIEW_LIMIT;
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
-const data = ref([] as Material[]);
-const products = ref([] as Product[]);
 const settingsPopup = ref(false);
-const materialsPopup = ref({
-  show: false,
-  tab: "materials" as ManageTab,
-});
-const materialGroupCollapsed = ref<Record<MaterialGroupKey, boolean>>({
-  danger: false,
-  warning: false,
-  safe: false,
-  unlinked: true,
-});
+const bills = ref<Bill[]>([]);
+const activeBillId = ref("");
 
+const billStorage = LStorage.new("localBillData");
 const themeStorage = LStorage.new("localBillTheme");
+
 const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
 });
 const themeStyle = computed(() => currentThemeOption.value.variables);
-const setTheme = (theme: ThemeKey) => {
-  currentTheme.value = theme;
-  themeStorage.setter(theme);
-};
-
-const {
-  activeProducts,
-  craftableCountForProduct,
-  materialCraftableCount,
-  materialStatus,
-  materialGroupKey,
-  materialRelatedSummary,
-  materialStatusText,
-  materialStatusClass,
-  productStatusClass,
-  recipePreview,
-} = useMaterialStatus(data, products);
-
-const {
-  calculation,
-  orderInfo,
-  OrderData,
-  visibleOrders,
-  collapsedOrdersCount,
-  orderTotal,
-  activeOrderProducts,
-  canSyncCalculation,
-  initOrderMonthData,
-  monthChange,
-  setOrderDate,
-  onProductChange,
-  openCreateOrder,
-  orderSubmit,
-  beforeUpd,
-  del,
-} = useOrderActions({
-  materials: data,
-  products,
-  activeProducts,
-  ordersExpanded,
-  orderPreviewLimit,
-  dateFormat: DATE_FORMAT,
-  craftableCountForProduct,
-  openMaterialEditor: () => openMaterialEditor(),
-  openProductEditor: () => openProductEditor(),
-});
+const activeBill = computed(() => bills.value.find((bill) => bill.id === activeBillId.value));
+const grandTotal = computed(() => bills.value.reduce((total, bill) => total + billTotal(bill), 0));
+const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
 
 const {
   importExportInfo,
@@ -372,167 +191,173 @@ const {
   resetAllData,
   importData,
 } = useBackupActions({
-  materials: data,
-  products,
-  orderInfo,
-  ordersExpanded,
+  bills,
   settingsPopup,
   dateFormat: DATE_FORMAT,
   initData: () => init(),
 });
 
-const {
-  materialEditor,
-  saveMaterials,
-  openMaterialEditor,
-  submitMaterialEditor,
-  removeMaterial,
-} = useMaterialEditor(data, products);
+watch(bills, saveBills, { deep: true });
 
-const {
-  productEditor,
-  saveProducts,
-  openProductEditor,
-  addRecipeItem,
-  toggleProductStatus,
-  availableMaterialsForRecipe,
-  onRecipeMaterialChange,
-  removeRecipeItem,
-  submitProductEditor,
-  removeProduct,
-} = useProductEditor(data, products, {
-  openMaterialEditor: () => openMaterialEditor(),
-});
-
-const productsList = computed(() => {
-  return [...products.value].sort((a, b) => craftableCountForProduct(b) - craftableCountForProduct(a));
-});
-
-const materialsList = computed(() => {
-  return [...data.value].sort((a, b) => {
-    const statusDiff = MATERIAL_GROUP_RANK[materialGroupKey(a)] - MATERIAL_GROUP_RANK[materialGroupKey(b)];
-    if (statusDiff !== 0) return statusDiff;
-    return a.name.localeCompare(b.name);
-  });
-});
-
-const materialManageGroups = computed(() => {
-  return MATERIAL_GROUP_META
-    .map((group) => ({
-      ...group,
-      collapsed: materialGroupCollapsed.value[group.key],
-      items: materialsList.value.filter((item) => materialGroupKey(item) === group.key),
-    }))
-    .filter((group) => group.items.length > 0);
-});
-
-const materialsSummary = computed(() => {
-  const statusCount = countMaterialsByGroup();
-  const warningKinds = statusCount.warning;
-  const dangerKinds = statusCount.danger;
-  const footer = [] as string[];
-  if (warningKinds > 0) footer.push(`预警 ${warningKinds}`);
-  if (dangerKinds > 0) footer.push(`缺货 ${dangerKinds}`);
-  return {
-    totalKinds: data.value.length,
-    warningKinds,
-    dangerKinds,
-    footerText: footer.join(" · "),
-  };
-});
-
-const productsSummary = computed(() => {
-  const activeCount = activeProducts.value.length;
-  const inactiveCount = products.value.length - activeCount;
-  const footer = [] as string[];
-  if (activeCount > 0) footer.push(`正常 ${activeCount}`);
-  if (inactiveCount > 0) footer.push(`停产 ${inactiveCount}`);
-  return {
-    activeCount,
-    inactiveCount,
-    footerText: footer.join(" · "),
-  };
-});
-
-const craftableProducts = computed(() => {
-  return [...activeProducts.value]
-    .filter((item) => craftableCountForProduct(item) > 0)
-    .sort((a, b) => craftableCountForProduct(b) - craftableCountForProduct(a));
-});
-
-const warningMaterials = computed(() => {
-  return materialsList.value.filter((item) => {
-    const status = materialGroupKey(item);
-    return status === "warning" || status === "danger";
-  });
-});
-
-const materialsPopupDescription = computed(() => {
-  return materialsPopup.value.tab === "materials"
-    ? "管理库存数量和预警状态。"
-    : "管理货品配方、价格和消耗规则。";
-});
-
-const materialsPopupCreateText = computed(() => {
-  return materialsPopup.value.tab === "materials" ? "新增备料" : "新增货品";
-});
-
-function countMaterialsByGroup() {
-  return data.value.reduce<Record<MaterialGroupKey, number>>((result, item) => {
-    result[materialGroupKey(item)] += 1;
-    return result;
-  }, {
-    danger: 0,
-    warning: 0,
-    safe: 0,
-    unlinked: 0,
-  });
+function billTotal(bill: Bill) {
+  return sumBillItems(bill.items);
 }
 
-function toggleMaterialGroup(key: MaterialGroupKey) {
-  materialGroupCollapsed.value[key] = !materialGroupCollapsed.value[key];
+function saveBills() {
+  if (bills.value.length) {
+    billStorage.setter(bills.value);
+  } else {
+    billStorage.remove();
+  }
 }
 
-const scrollToTop = () => {
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth",
-  });
-};
+function setTheme(theme: ThemeKey) {
+  currentTheme.value = theme;
+  themeStorage.setter(theme);
+}
 
-const updateScrollTopVisibility = () => {
-  showScrollTop.value = window.scrollY > SCROLL_TOP_THRESHOLD;
-};
-
-const scrollToOrders = () => {
-  if (!ordersSection.value) return;
-  const headerHeight = headerSection.value?.offsetHeight || 0;
-  window.scrollTo({
-    top: Math.max(0, ordersSection.value.getBoundingClientRect().top + window.scrollY - headerHeight - TOP_SCROLL_GAP),
-    behavior: "smooth",
-  });
-};
-
-const openMaterialsPopup = (tab: ManageTab = "materials") => {
-  materialsPopup.value.tab = tab;
-  materialsPopup.value.show = true;
-};
-
-const init = () => {
+function init() {
   const storedTheme = themeStorage.getter();
   currentTheme.value = isThemeKey(storedTheme) ? storedTheme : DEFAULT_THEME;
+  bills.value = normalizeBills(billStorage.getter());
+  if (activeBillId.value && !bills.value.some((bill) => bill.id === activeBillId.value)) {
+    activeBillId.value = "";
+  }
+}
 
-  const storedMaterials = LStorage.data.getter();
-  data.value = normalizeMaterials(storedMaterials);
+function addBill() {
+  const bill = createEmptyBill(`账单 ${bills.value.length + 1}`);
+  bill.items.push(createEmptyBillItem());
+  bills.value.unshift(bill);
+  activeBillId.value = bill.id;
+  nextTick(scrollToTop);
+}
 
-  const rawStoredProducts = LStorage.productData.getter();
-  products.value = normalizeProducts(rawStoredProducts);
+function openBill(id: string) {
+  activeBillId.value = id;
+  nextTick(scrollToTop);
+}
 
-  orderInfo.value.data = normalizeOrders(LStorage.orderData.getter());
-  initOrderMonthData();
-  saveMaterials();
-  saveProducts();
-};
+function closeBill() {
+  activeBillId.value = "";
+}
+
+function touchActiveBill() {
+  if (!activeBill.value) return;
+  activeBill.value.updatedAt = new Date().toISOString();
+}
+
+function addItem() {
+  if (!activeBill.value) return;
+  activeBill.value.items.unshift(createEmptyBillItem());
+  touchActiveBill();
+}
+
+function removeItem(id: string) {
+  if (!activeBill.value) return;
+  activeBill.value.items = activeBill.value.items.filter((item) => item.id !== id);
+  touchActiveBill();
+}
+
+function removeActiveBill() {
+  if (!activeBill.value) return;
+  const billName = activeBill.value.name || "未命名账单";
+  showConfirmDialog({
+    title: "删除账单",
+    message: `确认删除「${billName}」吗？`,
+    width: "260px",
+  }).then(() => {
+    bills.value = bills.value.filter((bill) => bill.id !== activeBillId.value);
+    activeBillId.value = "";
+    showToast("账单已删除");
+  }).catch(() => {
+  });
+}
+
+async function shareBillImage() {
+  if (!activeBill.value) return;
+  const dataUrl = createBillImage(activeBill.value);
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = `${activeBill.value.name || "local-bill"}-明细.png`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast("明细图片已生成");
+}
+
+function createBillImage(bill: Bill) {
+  const width = 900;
+  const rowHeight = 64;
+  const height = Math.max(520, 260 + bill.items.length * rowHeight);
+  const canvas = document.createElement("canvas");
+  const pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = width * pixelRatio;
+  canvas.height = height * pixelRatio;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.scale(pixelRatio, pixelRatio);
+  ctx.fillStyle = "#f6f8fb";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  roundRect(ctx, 48, 48, width - 96, height - 96, 24);
+  ctx.fill();
+
+  ctx.fillStyle = "#203747";
+  ctx.font = "700 42px Arial, sans-serif";
+  ctx.fillText(bill.name || "未命名账单", 88, 124);
+  ctx.fillStyle = "#72808c";
+  ctx.font = "24px Arial, sans-serif";
+  ctx.fillText(`${bill.items.length} 项`, 88, 164);
+
+  ctx.fillStyle = "#1f6b7b";
+  ctx.font = "700 44px Arial, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(`¥${formatMoney(billTotal(bill))}`, width - 88, 140);
+  ctx.textAlign = "left";
+
+  let y = 224;
+  bill.items.forEach((item, index) => {
+    ctx.fillStyle = index % 2 === 0 ? "#f7f9fc" : "#ffffff";
+    roundRect(ctx, 88, y - 42, width - 176, 52, 10);
+    ctx.fill();
+    ctx.fillStyle = "#203747";
+    ctx.font = "24px Arial, sans-serif";
+    ctx.fillText(item.name || "未命名子项", 112, y - 8);
+    ctx.fillStyle = "#1f6b7b";
+    ctx.font = "700 24px Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(`¥${formatMoney(Number(item.price || 0))}`, width - 112, y - 8);
+    ctx.textAlign = "left";
+    y += rowHeight;
+  });
+
+  ctx.fillStyle = "#72808c";
+  ctx.font = "18px Arial, sans-serif";
+  ctx.fillText("Local Bill", 88, height - 84);
+  return canvas.toDataURL("image/png");
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + width, y, x + width, y + height, radius);
+  ctx.arcTo(x + width, y + height, x, y + height, radius);
+  ctx.arcTo(x, y + height, x, y, radius);
+  ctx.arcTo(x, y, x + width, y, radius);
+  ctx.closePath();
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateScrollTopVisibility() {
+  showScrollTop.value = window.scrollY > SCROLL_TOP_THRESHOLD;
+}
 
 init();
 
@@ -549,379 +374,337 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .home-page {
   min-height: 100vh;
-  padding: 10px;
+  padding: 12px;
   background: var(--page-bg);
   color: var(--text-main);
 }
 
-.page-header,
-.hero-card,
-.orders-panel {
-  margin-bottom: 10px;
-  background: var(--surface);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+.home-page,
+.home-page * {
+  box-sizing: border-box;
 }
 
-.home-page > section:last-of-type {
-  margin-bottom: 0;
-}
-
-.page-header,
-.hero-card,
-.orders-panel {
-  padding: 14px;
+.bill-list-view,
+.bill-detail-view {
+  width: min(100%, 780px);
+  margin: 0 auto;
 }
 
 .page-header {
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: blur(12px);
-  border-radius: 0;
-  margin: -10px -10px 10px;
-  padding: 14px 14px 12px;
-  box-shadow: var(--header-shadow);
-}
-
-.page-header,
-.hero-main,
-.section-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin: -12px -12px 12px;
+  padding: 18px max(18px, calc((100vw - 780px) / 2 + 18px)) 16px;
+  background: var(--surface);
+  box-shadow: var(--header-shadow);
+  backdrop-filter: blur(12px);
 }
 
 .hero-tag,
 .section-tag {
   margin: 0 0 4px;
-  font-size: 11px;
   color: var(--text-muted);
+  font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.page-header h1,
-.hero-card h1,
-.section-row h2 {
+.page-header h1 {
   margin: 0;
   color: var(--text-strong);
 }
 
-.header-actions {
+.page-header h1 {
+  font-size: 34px;
+  line-height: 1.08;
+}
+
+.header-actions,
+.detail-actions,
+.section-row,
+.item-row {
   display: flex;
   align-items: center;
+}
+
+.header-actions {
   gap: 8px;
 }
 
-.header-icon {
+.header-icon,
+.icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 999px;
   background: var(--header-icon-bg);
   color: var(--accent);
+  font-size: 18px;
 }
 
-.header-icon.danger {
+.icon-button.danger,
+.text-action.danger {
   background: var(--danger-bg);
   color: var(--danger-text);
 }
 
-.hero-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.craftable-card {
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--surface-soft);
-}
-
-.craftable-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.craftable-head strong {
-  color: var(--text-strong);
-}
-
-.craftable-head span,
-.craftable-empty {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.craftable-empty {
-  line-height: 1.35;
-}
-
-.craftable-list {
-  display: grid;
-  gap: 8px;
-}
-
-.warning-materials-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.craftable-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
+.summary-band,
+.bill-editor,
+.items-panel {
+  margin-bottom: 14px;
+  padding: 20px;
+  border-radius: 16px;
   background: var(--surface);
+  box-shadow: 0 14px 34px rgba(38, 56, 88, 0.08);
 }
 
-.craftable-row span {
-  color: var(--text-main);
+.summary-band {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.craftable-row strong {
+.summary-band strong {
+  display: block;
   color: var(--accent-strong);
+  font-size: 34px;
+  line-height: 1;
 }
 
-.warning-materials-card {
-  margin-top: 10px;
+.summary-band span,
+.bill-card small,
+.empty-state span,
+.field-label span,
+.detail-total span {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.warning-material-row {
+.bill-grid {
   display: grid;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.bill-card,
+.add-bill-card {
+  min-height: 126px;
+  padding: 16px;
+  border: 0;
+  border-radius: 14px;
   background: var(--surface);
-}
-
-.warning-material-row span,
-.warning-material-row small,
-.warning-material-row strong {
-  display: block;
-}
-
-.warning-material-row span {
-  color: var(--text-main);
-  line-height: 1.25;
-}
-
-.warning-material-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.warning-material-row small {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.warning-material-row strong {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.warning-material-row strong.status-warning {
-  color: var(--warning-text);
-  background: var(--warning-bg);
-}
-
-.warning-material-row strong.status-danger {
-  color: var(--danger-text);
-  background: var(--danger-bg);
-}
-
-.orders-head-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.create-order-btn {
-  border: 0;
-  color: #ffffff;
-  background: var(--create-btn-bg);
-  box-shadow: var(--create-btn-shadow);
-}
-
-.create-order-btn:hover,
-.create-order-btn:focus {
-  color: #ffffff;
-  background: var(--create-btn-bg);
-}
-
-.orders-panel {
-  padding-bottom: 0;
-  overflow: hidden;
-}
-
-.month-filter {
-  display: flex;
-  gap: 8px;
-  margin: 10px 0 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.month-filter::-webkit-scrollbar {
-  display: none;
-}
-
-.month-chip {
-  flex: 0 0 auto;
-  min-width: 88px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--surface-muted);
+  box-shadow: var(--shadow);
   text-align: left;
-  color: var(--text-main);
 }
 
-.month-chip span,
-.month-chip strong {
+.bill-card span,
+.bill-card strong,
+.bill-card small {
   display: block;
 }
 
-.month-chip span {
-  font-size: 11px;
-}
-
-.month-chip strong {
-  margin-top: 3px;
-  font-size: 14px;
-}
-
-.month-chip.active {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-.summary-cell :deep(.van-cell__value) {
-  color: var(--accent);
+.bill-card span {
+  color: var(--text-strong);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
-.summary-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+.bill-card strong {
+  margin-top: 22px;
+  color: var(--accent-strong);
+  font-size: 24px;
 }
 
-.summary-toggle {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
+.bill-card small {
+  margin-top: 6px;
 }
 
-.summary-count {
+.add-bill-card {
+  display: grid;
+  place-items: center;
   color: var(--accent);
-  font-weight: 700;
+  background: var(--surface);
+  font-size: 32px;
 }
 
-.orders-toggle-cell :deep(.van-cell__value) {
-  text-align: center;
-}
-
-.orders-toggle-btn {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.orders-panel :deep(.van-cell-group--inset) {
-  margin: 0;
-  border-radius: 10px;
-}
-
-.orders-panel :deep(.van-cell-group) {
-  margin-bottom: 0;
-}
-
-.orders-empty {
+.empty-state {
   display: grid;
   place-items: center;
   gap: 8px;
-  padding: 24px 12px 28px;
+  padding: 34px 12px;
   text-align: center;
 }
 
-.orders-empty strong {
-  color: var(--text-strong);
-  font-size: 15px;
+.empty-state.compact {
+  padding: 22px 12px;
 }
 
-.orders-empty span {
+.empty-state strong {
+  color: var(--text-strong);
+}
+
+.bill-editor {
+  display: grid;
+  gap: 18px;
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.field-label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.text-input {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 42%, var(--divider));
+  border-radius: 12px;
+  outline: 0;
+  background: color-mix(in srgb, var(--field-bg) 76%, var(--surface));
+  color: var(--text-main);
+  font-size: 15px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.text-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.title-input {
+  height: 54px;
+  color: var(--text-strong);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.detail-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  justify-items: end;
+  min-width: 190px;
+  min-height: 92px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--stat-materials-bg);
+  box-shadow: var(--stat-light-shadow);
+}
+
+.detail-total span {
+  justify-self: start;
+  font-weight: 700;
+}
+
+.detail-total strong {
+  align-self: center;
+  color: var(--accent-strong);
+  font-size: 32px;
+  line-height: 1.05;
+}
+
+.detail-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.text-action,
+.add-item-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--header-icon-bg);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.section-row {
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.add-item-row {
+  width: 100%;
+  height: 66px;
+  border: 0;
+  border-radius: 14px;
+  color: var(--accent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--header-icon-bg) 82%, var(--surface)) 0%,
+      color-mix(in srgb, var(--surface-soft) 74%, var(--surface)) 100%
+    );
+  box-shadow:
+    0 10px 20px color-mix(in srgb, var(--accent-ring) 70%, transparent),
+    0 4px 12px rgba(38, 56, 88, 0.05),
+    var(--stat-light-shadow);
+}
+
+.item-list {
+  display: grid;
+  gap: 12px;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 160px) 42px;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 34%, var(--divider));
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--surface-soft) 0%, color-mix(in srgb, var(--surface-soft) 72%, var(--surface)) 100%);
+  box-shadow: 0 6px 16px rgba(38, 56, 88, 0.04);
+}
+
+.item-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.item-field span {
   color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.35;
-}
-
-.summary-title {
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.order-cell :deep(.van-cell__title) {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.order-cell :deep(.van-cell__label) {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--text-subtle);
-}
-
-.order-cell :deep(.van-cell__value) {
-  font-size: 14px;
   font-weight: 700;
+}
+
+.item-price-field .text-input {
   color: var(--accent-strong);
+  font-weight: 700;
+  text-align: right;
 }
 
-.van-field {
-  background: var(--field-bg);
-  border-radius: 12px;
-}
-
-.home-page :deep(.van-cell),
-.home-page :deep(.van-cell-group) {
-  background: var(--surface);
-  color: var(--text-main);
-}
-
-.home-page :deep(.van-cell::after) {
-  border-color: var(--divider);
-}
-
-.home-page :deep(.van-field__control),
-.home-page :deep(.van-field__label) {
-  color: var(--text-main);
+.item-delete {
+  width: 42px;
+  height: 42px;
 }
 
 .home-page :deep(.van-popup) {
@@ -929,14 +712,76 @@ onUnmounted(() => {
   color: var(--text-main);
 }
 
-@media (max-width: 720px) {
-  .hero-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 520px) {
+  .home-page {
+    padding: 10px;
   }
 
-  .warning-materials-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .page-header {
+    margin: -10px -10px 10px;
+    padding: 18px 24px 16px;
   }
 
+  .page-header h1 {
+    font-size: 30px;
+  }
+
+  .header-icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .bill-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .summary-band,
+  .bill-editor,
+  .items-panel {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .detail-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-total {
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .detail-total strong {
+    text-align: right;
+  }
+
+  .item-row {
+    grid-template-columns: minmax(0, 1fr) 112px 42px;
+  }
+
+  .item-field span {
+    font-size: 11px;
+  }
+
+  .item-row .text-input {
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .item-row {
+    grid-template-columns: 1fr 42px;
+  }
+
+  .item-name-field,
+  .item-price-field {
+    grid-column: 1 / 2;
+  }
+
+  .item-delete {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
 }
 </style>
