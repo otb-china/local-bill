@@ -756,7 +756,9 @@ onUnmounted(() => {
   }
 
   .item-row {
-    grid-template-columns: minmax(0, 1fr) 112px 42px;
+    grid-template-columns: minmax(0, 1fr) minmax(82px, 96px) 40px;
+    gap: 8px;
+    padding: 12px;
   }
 
   .item-field span {
@@ -766,22 +768,10 @@ onUnmounted(() => {
   .item-row .text-input {
     padding: 0 10px;
   }
-}
-
-@media (max-width: 380px) {
-  .item-row {
-    grid-template-columns: 1fr 42px;
-  }
-
-  .item-name-field,
-  .item-price-field {
-    grid-column: 1 / 2;
-  }
-
+  
   .item-delete {
-    grid-column: 2 / 3;
-    grid-row: 1 / 3;
-    align-self: center;
+    width: 40px;
+    height: 40px;
   }
 }
 </style>
