@@ -51,6 +51,16 @@
           </span>
         </button>
 
+        <button class="settings-item settings-item-feature" type="button" @click="emit('open-recycle')">
+          <span class="settings-item-icon">
+            <el-icon><RefreshLeft /></el-icon>
+          </span>
+          <span>
+            <strong>回收站</strong>
+            <em>{{ recycleCount }} 个账单，一周内可恢复</em>
+          </span>
+        </button>
+
         <button class="settings-item settings-item-feature danger" type="button" @click="emit('reset')">
           <span class="settings-item-icon">
             <el-icon><Delete /></el-icon>
@@ -67,7 +77,7 @@
 
 <script lang="ts" setup>
 import { computed } from "vue";
-import { Delete, Download, Upload } from "@element-plus/icons-vue";
+import { Delete, Download, RefreshLeft, Upload } from "@element-plus/icons-vue";
 import type { ThemeKey, ThemeOption } from "@/config/themes";
 
 const props = defineProps<{
@@ -75,6 +85,7 @@ const props = defineProps<{
   themeOptions: ThemeOption[];
   currentTheme: ThemeKey;
   currentThemeName: string;
+  recycleCount: number;
 }>();
 
 const emit = defineEmits<{
@@ -82,6 +93,7 @@ const emit = defineEmits<{
   "set-theme": [theme: ThemeKey];
   export: [];
   "open-import": [];
+  "open-recycle": [];
   reset: [];
 }>();
 

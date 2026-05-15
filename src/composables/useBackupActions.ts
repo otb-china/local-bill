@@ -2,11 +2,12 @@ import { computed, ref, type Ref } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
 import { LStorage } from "@/utils/localStorage.ts";
-import { normalizeBills } from "@/utils/stockData.ts";
-import type { Bill, LocalBillBackupData } from "@/types/stock";
+import { normalizeBills, normalizeDeletedBills } from "@/utils/stockData.ts";
+import type { Bill, DeletedBill, LocalBillBackupData } from "@/types/stock";
 
 interface UseBackupActionsOptions {
   bills: Ref<Bill[]>;
+  deletedBills: Ref<DeletedBill[]>;
   settingsPopup: Ref<boolean>;
   dateFormat: string;
   initData: () => void;
@@ -39,6 +40,7 @@ export function useBackupActions(options: UseBackupActionsOptions) {
   function createBackupData() {
     return {
       bills: options.bills.value,
+      deletedBills: options.deletedBills.value,
     };
   }
 
@@ -70,7 +72,9 @@ export function useBackupActions(options: UseBackupActionsOptions) {
       width: "250px",
     }).then(() => {
       options.bills.value = [];
+      options.deletedBills.value = [];
       LStorage.new("localBillData").remove();
+      LStorage.new("localBillRecycleBin").remove();
       options.settingsPopup.value = false;
       showToast("数据已重置");
     }).catch(() => {
@@ -84,10 +88,16 @@ export function useBackupActions(options: UseBackupActionsOptions) {
         throw new Error("Invalid backup data");
       }
       const bills = normalizeBills(parsedData.bills);
+      const deletedBills = normalizeDeletedBills(parsedData.deletedBills);
       if (!Array.isArray(parsedData.bills) || bills.length !== parsedData.bills.length) {
         throw new Error("Invalid bills");
       }
       LStorage.new("localBillData").setter(bills);
+      if (deletedBills.length) {
+        LStorage.new("localBillRecycleBin").setter(deletedBills);
+      } else {
+        LStorage.new("localBillRecycleBin").remove();
+      }
       options.initData();
       importExportInfo.value.show = false;
       importInfo.value.dataStr = "";

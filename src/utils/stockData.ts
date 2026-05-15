@@ -1,5 +1,5 @@
 import type { RSA } from "otb-toolkit/src/types";
-import type { Bill, BillItem } from "@/types/stock";
+import type { Bill, BillItem, DeletedBill } from "@/types/stock";
 
 export const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -48,6 +48,14 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
         : [],
     };
   }).filter((item) => item.name);
+}
+
+export function normalizeDeletedBills(list: RSA[] | undefined): DeletedBill[] {
+  const source = Array.isArray(list) ? list : [];
+  return normalizeBills(source).map((item, index) => ({
+    ...item,
+    deletedAt: String(source[index]?.deletedAt || new Date().toISOString()),
+  }));
 }
 
 function normalizePrice(value: unknown): number | "" {

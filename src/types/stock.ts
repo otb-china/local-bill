@@ -14,6 +14,11 @@ export interface Bill extends RSA {
   updatedAt: string;
 }
 
+export interface DeletedBill extends Bill {
+  deletedAt: string;
+}
+
 export interface LocalBillBackupData extends RSA {
   bills?: RSA[];
+  deletedBills?: RSA[];
 }

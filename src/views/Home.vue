@@ -125,11 +125,42 @@
       :theme-options="themeOptions"
       :current-theme="currentTheme"
       :current-theme-name="currentThemeOption.name"
+      :recycle-count="deletedBills.length"
       @set-theme="setTheme"
       @export="exportAllData"
       @open-import="openImportExport"
+      @open-recycle="openRecycleBin"
       @reset="resetAllData"
     />
+
+    <van-popup v-model:show="recyclePopup" position="bottom" round destroy-on-close>
+      <div class="popup-body recycle-popup">
+        <div class="popup-head">
+          <div>
+            <h3>回收站</h3>
+            <p>删除的账单保留 7 天，可在这里恢复。</p>
+          </div>
+        </div>
+
+        <div v-if="deletedBills.length" class="recycle-list">
+          <div v-for="bill in deletedBills" :key="bill.id" class="recycle-item">
+            <div>
+              <strong>{{ bill.name }}</strong>
+              <span>¥{{ formatMoney(billTotal(bill)) }} · {{ getRecycleDaysLeft(bill) }} 天后清除</span>
+            </div>
+            <div class="recycle-actions">
+              <button type="button" @click="restoreDeletedBill(bill.id)">恢复</button>
+              <button class="danger" type="button" @click="purgeDeletedBill(bill.id)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-state compact">
+          <strong>回收站为空</strong>
+          <span>删除的账单会在这里保留一周。</span>
+        </div>
+      </div>
+    </van-popup>
 
     <ImportDataPopup
       v-model:show="importExportInfo.show"
@@ -156,24 +187,31 @@ import { LStorage } from "@/utils/localStorage.ts";
 import {
   createEmptyBill,
   createEmptyBillItem,
+  createId,
   formatMoney,
+  normalizeDeletedBills,
   normalizeBills,
   sumBillItems,
 } from "@/utils/stockData.ts";
 import type { ThemeKey } from "@/config/themes";
-import type { Bill } from "@/types/stock";
+import type { Bill, DeletedBill } from "@/types/stock";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
+const RECYCLE_KEEP_DAYS = 7;
+const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
 
 const headerSection = ref<HTMLElement | null>(null);
 const showScrollTop = ref(false);
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
 const settingsPopup = ref(false);
+const recyclePopup = ref(false);
 const bills = ref<Bill[]>([]);
+const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
 
 const billStorage = LStorage.new("localBillData");
+const recycleStorage = LStorage.new("localBillRecycleBin");
 const themeStorage = LStorage.new("localBillTheme");
 
 const currentThemeOption = computed(() => {
@@ -197,12 +235,14 @@ const {
   importData,
 } = useBackupActions({
   bills,
+  deletedBills,
   settingsPopup,
   dateFormat: DATE_FORMAT,
   initData: () => init(),
 });
 
 watch(bills, saveBills, { deep: true });
+watch(deletedBills, saveDeletedBills, { deep: true });
 
 function billTotal(bill: Bill) {
   return sumBillItems(getValidItems(bill.items));
@@ -216,6 +256,14 @@ function saveBills() {
   }
 }
 
+function saveDeletedBills() {
+  if (deletedBills.value.length) {
+    recycleStorage.setter(deletedBills.value);
+  } else {
+    recycleStorage.remove();
+  }
+}
+
 function setTheme(theme: ThemeKey) {
   currentTheme.value = theme;
   themeStorage.setter(theme);
@@ -225,6 +273,7 @@ function init() {
   const storedTheme = themeStorage.getter();
   currentTheme.value = isThemeKey(storedTheme) ? storedTheme : DEFAULT_THEME;
   bills.value = normalizeBills(billStorage.getter());
+  deletedBills.value = purgeExpiredDeletedBills(normalizeDeletedBills(recycleStorage.getter()));
   if (activeBillId.value && !bills.value.some((bill) => bill.id === activeBillId.value)) {
     activeBillId.value = "";
   }
@@ -245,6 +294,7 @@ function openBill(id: string) {
 
 function closeBill() {
   pruneActiveBillInvalidItems();
+  removeActiveBillIfEmpty();
   activeBillId.value = "";
 }
 
@@ -284,6 +334,47 @@ function pruneActiveBillInvalidItems() {
   touchActiveBill();
 }
 
+function removeActiveBillIfEmpty() {
+  if (!activeBill.value || activeBill.value.items.length) return;
+  bills.value = bills.value.filter((bill) => bill.id !== activeBillId.value);
+}
+
+function purgeExpiredDeletedBills(list: DeletedBill[]) {
+  const now = Date.now();
+  return list.filter((bill) => now - new Date(bill.deletedAt).getTime() < RECYCLE_KEEP_MS);
+}
+
+function getRecycleDaysLeft(bill: DeletedBill) {
+  const deletedTime = new Date(bill.deletedAt).getTime();
+  const leftMs = Math.max(0, RECYCLE_KEEP_MS - (Date.now() - deletedTime));
+  return Math.max(1, Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
+}
+
+function openRecycleBin() {
+  deletedBills.value = purgeExpiredDeletedBills(deletedBills.value);
+  settingsPopup.value = false;
+  recyclePopup.value = true;
+}
+
+function restoreDeletedBill(id: string) {
+  const bill = deletedBills.value.find((item) => item.id === id);
+  if (!bill) return;
+  const { deletedAt: _deletedAt, ...restoredBill } = bill;
+  bills.value.unshift({
+    ...restoredBill,
+    id: bills.value.some((item) => item.id === restoredBill.id) ? createId("bill") : restoredBill.id,
+    updatedAt: new Date().toISOString(),
+  });
+  deletedBills.value = deletedBills.value.filter((item) => item.id !== id);
+  recyclePopup.value = false;
+  showToast("账单已恢复");
+}
+
+function purgeDeletedBill(id: string) {
+  deletedBills.value = deletedBills.value.filter((bill) => bill.id !== id);
+  showToast("已彻底删除");
+}
+
 function removeItem(id: string) {
   if (!activeBill.value) return;
   activeBill.value.items = activeBill.value.items.filter((item) => item.id !== id);
@@ -292,15 +383,21 @@ function removeItem(id: string) {
 
 function removeActiveBill() {
   if (!activeBill.value) return;
-  const billName = activeBill.value.name || "未命名账单";
+  const currentBill = activeBill.value;
+  const billName = currentBill.name || "未命名账单";
   showConfirmDialog({
     title: "删除账单",
-    message: `确认删除「${billName}」吗？`,
+    message: `确认将「${billName}」移入回收站吗？一周内可恢复。`,
     width: "260px",
   }).then(() => {
+    const deletedBill = {
+      ...currentBill,
+      deletedAt: new Date().toISOString(),
+    };
+    deletedBills.value = [deletedBill, ...deletedBills.value.filter((bill) => bill.id !== deletedBill.id)];
     bills.value = bills.value.filter((bill) => bill.id !== activeBillId.value);
     activeBillId.value = "";
-    showToast("账单已删除");
+    showToast("账单已移入回收站");
   }).catch(() => {
   });
 }
@@ -771,6 +868,69 @@ onUnmounted(() => {
   color: var(--text-main);
 }
 
+.recycle-popup {
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+.popup-head p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.recycle-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.recycle-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.recycle-item strong,
+.recycle-item span {
+  display: block;
+}
+
+.recycle-item strong {
+  color: var(--text-strong);
+}
+
+.recycle-item span {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.recycle-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.recycle-actions button {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--header-icon-bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.recycle-actions button.danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 @media (max-width: 520px) {
   .home-page {
     padding: 10px;
@@ -830,6 +990,14 @@ onUnmounted(() => {
   .swipe-delete-action {
     width: 64px;
     min-height: 78px;
+  }
+
+  .recycle-item {
+    grid-template-columns: 1fr;
+  }
+
+  .recycle-actions {
+    justify-content: flex-end;
   }
 }
 </style>
