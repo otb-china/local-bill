@@ -27,7 +27,11 @@ export function sumBillItems(items: BillItem[]) {
 }
 
 export function formatMoney(value: number) {
-  return Number(value || 0).toFixed(2);
+  const amount = Number(value || 0);
+  if (Math.abs(amount) >= 10000) {
+    return `${(amount / 10000).toFixed(2)}万`;
+  }
+  return amount.toFixed(2);
 }
 
 export function normalizeBills(list: RSA[] | undefined): Bill[] {
