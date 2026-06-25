@@ -29,15 +29,20 @@
 
       <section class="bill-grid">
         <button
-          v-for="bill in bills"
+          v-for="bill in sortedBills"
           :key="bill.id"
           class="bill-card"
           type="button"
           @click="openBill(bill.id)"
         >
-          <span>{{ bill.name }}</span>
+          <div class="bill-card-head">
+            <span class="bill-card-name">{{ bill.name }}</span>
+            <span class="bill-card-count">{{ bill.items.length }} 项</span>
+          </div>
           <strong>¥{{ formatMoney(billTotal(bill)) }}</strong>
-          <small>{{ bill.items.length }} 项</small>
+          <small v-if="getBillLatestCreatedDate(bill)" class="bill-card-meta">
+            <time>{{ getBillLatestCreatedDate(bill) }}</time>
+          </small>
         </button>
 
         <button class="add-bill-card" type="button" @click="addBill">
@@ -263,6 +268,7 @@ const currentThemeOption = computed(() => {
 const themeStyle = computed(() => currentThemeOption.value.variables);
 const activeBill = computed(() => bills.value.find((bill) => bill.id === activeBillId.value));
 const grandTotal = computed(() => bills.value.reduce((total, bill) => total + billTotal(bill), 0));
+const sortedBills = computed(() => sortBillsByLatestItemCreatedDate(bills.value));
 const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
 const validActiveBillItems = computed(() => activeBill.value ? getValidItems(activeBill.value.items) : []);
 const sortedActiveBillItems = computed(() => activeBill.value ? sortItemsByCreatedAt(activeBill.value.items) : []);
@@ -374,11 +380,34 @@ function sortItemsByCreatedAt(items: BillItem[]) {
   return [...items].sort((a, b) => getItemCreatedTimestamp(b) - getItemCreatedTimestamp(a));
 }
 
+function sortBillsByLatestItemCreatedDate(list: Bill[]) {
+  return list
+    .map((bill, index) => ({ bill, index, timestamp: getBillLatestCreatedTimestamp(bill) }))
+    .sort((a, b) => b.timestamp - a.timestamp || a.index - b.index)
+    .map((item) => item.bill);
+}
+
+function getBillLatestCreatedTimestamp(bill: Bill) {
+  return Math.max(0, ...bill.items.map(getItemCreatedTimestamp));
+}
+
 function getItemCreatedTimestamp(item: BillItem) {
   if (!item.createdAt) return 0;
   const date = parseItemCreatedAt(item.createdAt) || new Date(item.createdAt);
   const timestamp = date.getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getBillLatestCreatedDate(bill: Bill) {
+  const latestItem = sortItemsByCreatedAt(bill.items).find((item) => getItemCreatedTimestamp(item) > 0);
+  return latestItem ? formatCreatedDate(latestItem.createdAt) : "";
+}
+
+function formatCreatedDate(value: string) {
+  const date = parseItemCreatedAt(value) || new Date(value);
+  if (Number.isNaN(date.getTime())) return value.split(" ")[0] || value;
+  const pad = (number: number) => String(number).padStart(2, "0");
+  return [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-");
 }
 
 function parseItemCreatedAt(value: string) {
@@ -747,16 +776,38 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.bill-card span,
-.bill-card strong,
-.bill-card small {
+.bill-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.bill-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.bill-card strong {
   display: block;
 }
 
-.bill-card span {
+.bill-card-name {
+  min-width: 0;
   color: var(--text-strong);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.bill-card-count {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .bill-card strong {
@@ -765,16 +816,23 @@ onUnmounted(() => {
   font-size: 24px;
 }
 
-.bill-card small {
+.bill-card-meta {
+  display: block;
   margin-top: 6px;
 }
 
+.bill-card-meta time {
+  white-space: nowrap;
+}
+
 .add-bill-card {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--accent);
   background: var(--surface);
   font-size: 32px;
+  text-align: center;
 }
 
 .empty-state {
@@ -961,6 +1019,8 @@ onUnmounted(() => {
   position: absolute;
   right: 14px;
   top: 10px;
+  min-width: 96px;
+  text-align: right;
   color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
