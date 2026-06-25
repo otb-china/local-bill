@@ -778,6 +778,7 @@ onUnmounted(() => {
 
 .bill-card {
   display: flex;
+  align-items: stretch;
   flex-direction: column;
   justify-content: flex-start;
 }
@@ -787,6 +788,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
   min-height: 24px;
 }
 
