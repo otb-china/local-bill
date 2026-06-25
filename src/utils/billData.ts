@@ -3,6 +3,15 @@ import type { Bill, BillItem, DeletedBill } from "@/types/bill";
 
 export const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+export function formatLocalDateTime(date = new Date()) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function createEmptyBill(name = "未命名账单"): Bill {
   const now = new Date().toISOString();
   return {
@@ -19,6 +28,7 @@ export function createEmptyBillItem(): BillItem {
     id: createId("item"),
     name: "",
     price: "",
+    createdAt: formatLocalDateTime(),
   };
 }
 
@@ -48,6 +58,7 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
           id: String(child.id || createId("item")),
           name: String(child.name || ""),
           price: normalizePrice(child.price),
+          createdAt: normalizeItemCreatedAt(child.createdAt),
         }))
         : [],
     };
@@ -66,4 +77,19 @@ function normalizePrice(value: unknown): number | "" {
   if (value === "" || value === null || value === undefined) return "";
   const price = Number(value);
   return Number.isFinite(price) ? price : "";
+}
+
+function normalizeItemCreatedAt(value: unknown) {
+  if (!value) return "";
+  const text = String(value).trim();
+  const date = parseLocalDateTime(text) || new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return formatLocalDateTime(date);
+}
+
+function parseLocalDateTime(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
 }

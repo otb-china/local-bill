@@ -90,17 +90,16 @@
             <span>新增子项</span>
           </button>
 
-          <van-swipe-cell v-for="item in activeBill.items" :key="item.id" class="item-swipe">
-            <div class="item-row">
+          <van-swipe-cell v-for="item in sortedActiveBillItems" :key="item.id" class="item-swipe">
+            <div class="item-row" :class="{ 'has-created-at': item.createdAt }">
               <label class="item-field item-name-field">
-                <span>名称</span>
-                <input v-model.trim="item.name" class="text-input" @input="touchActiveBill" />
+                <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
               </label>
               <label class="item-field item-price-field">
-                <span>金额</span>
                 <input
                   v-model.number="item.price"
                   class="text-input price-input"
+                  aria-label="金额"
                   type="number"
                   inputmode="decimal"
                   min="0"
@@ -108,9 +107,21 @@
                   @input="touchActiveBill"
                 />
               </label>
+              <small
+                v-if="item.createdAt"
+                class="item-created-at"
+                title="双击修改时间"
+                @click.stop="handleItemTimeClick(item)"
+              >
+                {{ item.createdAt }}
+              </small>
             </div>
             <template #right>
-              <button class="swipe-delete-action" type="button" aria-label="删除子项" @click="removeItem(item.id)">
+              <button class="swipe-action time" type="button" aria-label="设置时间" @click="openItemTimeEditor(item)">
+                <el-icon><Clock /></el-icon>
+                <span>时间</span>
+              </button>
+              <button class="swipe-action danger" type="button" aria-label="删除子项" @click="removeItem(item.id)">
                 <el-icon><Delete /></el-icon>
                 <span>删除</span>
               </button>
@@ -162,6 +173,25 @@
       </div>
     </van-popup>
 
+    <van-popup v-model:show="itemTimePopup.show" position="bottom" round destroy-on-close>
+      <van-picker-group
+        class="time-popup"
+        title="设置创建时间"
+        :tabs="['日期', '时间']"
+        next-step-text="下一步"
+        @confirm="confirmItemTime"
+        @cancel="itemTimePopup.show = false"
+      >
+        <van-date-picker
+          v-model="itemTimePopup.date"
+          :min-date="itemTimeMinDate"
+          :max-date="itemTimeMaxDate"
+          :columns-type="['year', 'month', 'day']"
+        />
+        <van-time-picker v-model="itemTimePopup.time" :columns-type="['hour', 'minute']" />
+      </van-picker-group>
+    </van-popup>
+
     <ImportDataPopup
       v-model:show="importExportInfo.show"
       :has-overwrite-data="hasImportOverwriteData"
@@ -178,7 +208,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { Back, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
+import { Back, Clock, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -188,13 +218,14 @@ import {
   createEmptyBill,
   createEmptyBillItem,
   createId,
+  formatLocalDateTime,
   formatMoney,
   normalizeDeletedBills,
   normalizeBills,
   sumBillItems,
 } from "@/utils/billData.ts";
 import type { ThemeKey } from "@/config/themes";
-import type { Bill, DeletedBill } from "@/types/bill";
+import type { Bill, BillItem, DeletedBill } from "@/types/bill";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
@@ -206,6 +237,16 @@ const showScrollTop = ref(false);
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
 const settingsPopup = ref(false);
 const recyclePopup = ref(false);
+const itemTimePopup = ref({
+  show: false,
+  itemId: "",
+  date: [] as string[],
+  time: [] as string[],
+});
+const itemTimeTap = ref({
+  itemId: "",
+  time: 0,
+});
 const bills = ref<Bill[]>([]);
 const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
@@ -213,6 +254,8 @@ const activeBillId = ref("");
 const billStorage = LStorage.new("localBillData");
 const recycleStorage = LStorage.new("localBillRecycleBin");
 const themeStorage = LStorage.new("localBillTheme");
+const itemTimeMinDate = new Date(2020, 0, 1);
+const itemTimeMaxDate = new Date(2099, 11, 31);
 
 const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
@@ -222,6 +265,7 @@ const activeBill = computed(() => bills.value.find((bill) => bill.id === activeB
 const grandTotal = computed(() => bills.value.reduce((total, bill) => total + billTotal(bill), 0));
 const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
 const validActiveBillItems = computed(() => activeBill.value ? getValidItems(activeBill.value.items) : []);
+const sortedActiveBillItems = computed(() => activeBill.value ? sortItemsByCreatedAt(activeBill.value.items) : []);
 
 const {
   importExportInfo,
@@ -326,6 +370,24 @@ function getValidItems(items: Bill["items"]) {
   return items.filter(isValidItem);
 }
 
+function sortItemsByCreatedAt(items: BillItem[]) {
+  return [...items].sort((a, b) => getItemCreatedTimestamp(b) - getItemCreatedTimestamp(a));
+}
+
+function getItemCreatedTimestamp(item: BillItem) {
+  if (!item.createdAt) return 0;
+  const date = parseItemCreatedAt(item.createdAt) || new Date(item.createdAt);
+  const timestamp = date.getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function parseItemCreatedAt(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+}
+
 function pruneActiveBillInvalidItems() {
   if (!activeBill.value) return;
   const validItems = getValidItems(activeBill.value.items);
@@ -381,6 +443,50 @@ function removeItem(id: string) {
   touchActiveBill();
 }
 
+function handleItemTimeClick(item: BillItem) {
+  const now = Date.now();
+  const isDoubleTap = itemTimeTap.value.itemId === item.id && now - itemTimeTap.value.time < 360;
+  itemTimeTap.value = { itemId: item.id, time: now };
+  if (isDoubleTap) {
+    openItemTimeEditor(item);
+  }
+}
+
+function openItemTimeEditor(item: BillItem) {
+  const { date, time } = toPickerValues(item.createdAt);
+  itemTimePopup.value = {
+    show: true,
+    itemId: item.id,
+    date,
+    time,
+  };
+}
+
+function confirmItemTime() {
+  if (!activeBill.value || !itemTimePopup.value.itemId) return;
+  const target = activeBill.value.items.find((item) => item.id === itemTimePopup.value.itemId);
+  const [year, month, day] = itemTimePopup.value.date.map(Number);
+  const [hour, minute] = itemTimePopup.value.time.map(Number);
+  const selectedDate = new Date(year, month - 1, day, hour, minute);
+  if (!target || Number.isNaN(selectedDate.getTime())) {
+    showToast("请选择有效时间");
+    return;
+  }
+  target.createdAt = formatLocalDateTime(selectedDate);
+  itemTimePopup.value.show = false;
+  touchActiveBill();
+}
+
+function toPickerValues(value: string) {
+  const date = value ? parseItemCreatedAt(value) || new Date(value) : new Date();
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const [dateText, timeText] = formatLocalDateTime(validDate).split(" ");
+  return {
+    date: dateText.split("-"),
+    time: timeText.split(":"),
+  };
+}
+
 function removeActiveBill() {
   if (!activeBill.value) return;
   const currentBill = activeBill.value;
@@ -415,7 +521,7 @@ async function shareBillImage() {
 }
 
 function createBillImage(bill: Bill) {
-  const validItems = getValidItems(bill.items);
+  const validItems = getValidItems(sortItemsByCreatedAt(bill.items));
   const width = 900;
   const rowHeight = 64;
   const listStartY = 256;
@@ -815,7 +921,15 @@ onUnmounted(() => {
   border-radius: 14px;
 }
 
+.item-swipe :deep(.van-swipe-cell__right) {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding-left: 8px;
+}
+
 .item-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(104px, 142px);
   gap: 12px;
@@ -825,6 +939,10 @@ onUnmounted(() => {
   border-radius: 14px;
   background: linear-gradient(135deg, var(--surface-soft) 0%, color-mix(in srgb, var(--surface-soft) 72%, var(--surface)) 100%);
   box-shadow: 0 6px 16px rgba(38, 56, 88, 0.04);
+}
+
+.item-row.has-created-at {
+  padding-top: 30px;
 }
 
 .item-field {
@@ -839,13 +957,27 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.item-created-at {
+  position: absolute;
+  right: 14px;
+  top: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
 .item-price-field .text-input {
   color: var(--accent-strong);
   font-weight: 700;
   text-align: right;
 }
 
-.swipe-delete-action {
+.swipe-action {
+  --swipe-action-bg: var(--header-icon-bg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -853,14 +985,18 @@ onUnmounted(() => {
   gap: 4px;
   width: 72px;
   height: 100%;
-  min-height: 84px;
-  margin-left: 8px;
+  margin: 0;
   border: 0;
   border-radius: 14px;
-  background: var(--danger-bg);
-  color: var(--danger-text);
+  background: var(--swipe-action-bg);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 700;
+}
+
+.swipe-action.danger {
+  --swipe-action-bg: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .home-page :deep(.van-popup) {
@@ -877,6 +1013,10 @@ onUnmounted(() => {
   margin: 4px 0 0;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.time-popup {
+  color: var(--text-main);
 }
 
 .recycle-list {
@@ -987,9 +1127,8 @@ onUnmounted(() => {
   .item-row .text-input {
     padding: 0 10px;
   }
-  .swipe-delete-action {
+  .swipe-action {
     width: 64px;
-    min-height: 78px;
   }
 
   .recycle-item {
