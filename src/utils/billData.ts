@@ -29,6 +29,7 @@ export function createEmptyBillItem(): BillItem {
     name: "",
     price: "",
     createdAt: formatLocalDateTime(),
+    voided: false,
   };
 }
 
@@ -59,6 +60,7 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
           name: String(child.name || ""),
           price: normalizePrice(child.price),
           createdAt: normalizeItemCreatedAt(child.createdAt),
+          voided: Boolean(child.voided),
         }))
         : [],
     };

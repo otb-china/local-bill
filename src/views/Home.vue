@@ -96,7 +96,7 @@
           </button>
 
           <van-swipe-cell v-for="item in sortedActiveBillItems" :key="item.id" class="item-swipe">
-            <div class="item-row" :class="{ 'has-created-at': item.createdAt }">
+            <div class="item-row" :class="{ 'has-created-at': item.createdAt, voided: item.voided }">
               <label class="item-field item-name-field">
                 <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
               </label>
@@ -125,6 +125,10 @@
               <button class="swipe-action time" type="button" aria-label="设置时间" @click="openItemTimeEditor(item)">
                 <el-icon><Clock /></el-icon>
                 <span>时间</span>
+              </button>
+              <button class="swipe-action void" type="button" aria-label="作废子项" @click="toggleItemVoided(item)">
+                <el-icon><CircleClose /></el-icon>
+                <span>{{ item.voided ? "恢复" : "作废" }}</span>
               </button>
               <button class="swipe-action danger" type="button" aria-label="删除子项" @click="removeItem(item.id)">
                 <el-icon><Delete /></el-icon>
@@ -213,7 +217,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { Back, Clock, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
+import { Back, CircleClose, Clock, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -369,7 +373,7 @@ function canAppendItem() {
 }
 
 function isValidItem(item: Bill["items"][number]) {
-  return Boolean(item.name.trim()) && item.price !== "" && Number.isFinite(Number(item.price));
+  return !item.voided && Boolean(item.name.trim()) && item.price !== "" && Number.isFinite(Number(item.price));
 }
 
 function getValidItems(items: Bill["items"]) {
@@ -419,7 +423,8 @@ function parseItemCreatedAt(value: string) {
 
 function pruneActiveBillInvalidItems() {
   if (!activeBill.value) return;
-  const validItems = getValidItems(activeBill.value.items);
+  // Keep voided entries visible so they can be restored later; only discard unfinished live rows.
+  const validItems = activeBill.value.items.filter((item) => item.voided || isValidItem(item));
   if (validItems.length === activeBill.value.items.length) return;
   activeBill.value.items = validItems;
   touchActiveBill();
@@ -470,6 +475,12 @@ function removeItem(id: string) {
   if (!activeBill.value) return;
   activeBill.value.items = activeBill.value.items.filter((item) => item.id !== id);
   touchActiveBill();
+}
+
+function toggleItemVoided(item: BillItem) {
+  item.voided = !item.voided;
+  touchActiveBill();
+  showToast(item.voided ? "子项已作废，不计入合计" : "子项已恢复计算");
 }
 
 function handleItemTimeClick(item: BillItem) {
@@ -1005,6 +1016,15 @@ onUnmounted(() => {
   padding-top: 30px;
 }
 
+.item-row.voided {
+  opacity: 0.62;
+  filter: saturate(0.45);
+}
+
+.item-row.voided .text-input {
+  text-decoration: line-through;
+}
+
 .item-field {
   display: grid;
   gap: 6px;
@@ -1059,6 +1079,10 @@ onUnmounted(() => {
 .swipe-action.danger {
   --swipe-action-bg: var(--danger-bg);
   color: var(--danger-text);
+}
+
+.swipe-action.void {
+  --swipe-action-bg: color-mix(in srgb, var(--surface-soft) 86%, var(--accent));
 }
 
 .home-page :deep(.van-popup) {

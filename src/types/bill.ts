@@ -5,6 +5,7 @@ export interface BillItem extends RSA {
   name: string;
   price: number | "";
   createdAt: string;
+  voided?: boolean;
 }
 
 export interface Bill extends RSA {
