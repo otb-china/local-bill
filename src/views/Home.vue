@@ -75,6 +75,10 @@
             <el-icon><Share /></el-icon>
             <span>生成明细图片</span>
           </button>
+          <button class="text-action" type="button" @click="copyActiveBill">
+            <el-icon><CopyDocument /></el-icon>
+            <span>复制账单</span>
+          </button>
           <button class="text-action danger" type="button" @click="removeActiveBill">
             <el-icon><Delete /></el-icon>
             <span>删除账单</span>
@@ -217,7 +221,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { Back, CircleClose, Clock, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
+import { Back, CircleClose, Clock, CopyDocument, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -339,6 +343,24 @@ function addBill() {
   bills.value.unshift(bill);
   activeBillId.value = bill.id;
   nextTick(scrollToTop);
+}
+
+function copyActiveBill() {
+  if (!activeBill.value) return;
+  const source = activeBill.value;
+  const now = new Date().toISOString();
+  const copy: Bill = {
+    ...source,
+    id: createId("bill"),
+    name: `${source.name}（复制）`,
+    items: source.items.map((item) => ({ ...item, id: createId("item") })),
+    createdAt: now,
+    updatedAt: now,
+  };
+  bills.value.unshift(copy);
+  activeBillId.value = copy.id;
+  nextTick(scrollToTop);
+  showToast("账单已复制");
 }
 
 function openBill(id: string) {
