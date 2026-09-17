@@ -2,7 +2,7 @@ import { computed, ref, type Ref } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
 import { LStorage } from "@/utils/localStorage.ts";
-import { normalizeBills, normalizeDeletedBills } from "@/utils/billData.ts";
+import { mergeBills, normalizeBills, normalizeDeletedBills } from "@/utils/billData.ts";
 import type { Bill, DeletedBill, LocalBillBackupData } from "@/types/bill";
 
 interface UseBackupActionsOptions {
@@ -23,10 +23,10 @@ export function useBackupActions(options: UseBackupActionsOptions) {
   });
 
   const importExportSummary = computed(() => {
-    return `导入后将覆盖 ${options.bills.value.length} 个账单`;
+    return `本地已有 ${options.bills.value.length} 个账单，导入后将合并保留`;
   });
 
-  const hasImportOverwriteData = computed(() => {
+  const hasImportLocalData = computed(() => {
     return options.bills.value.length > 0;
   });
 
@@ -92,17 +92,15 @@ export function useBackupActions(options: UseBackupActionsOptions) {
       if (!Array.isArray(parsedData.bills) || bills.length !== parsedData.bills.length) {
         throw new Error("Invalid bills");
       }
-      LStorage.new("localBillData").setter(bills);
-      if (deletedBills.length) {
-        LStorage.new("localBillRecycleBin").setter(deletedBills);
-      } else {
-        LStorage.new("localBillRecycleBin").remove();
-      }
+      const mergedBills = mergeBills(options.bills.value, bills);
+      const mergedDeletedBills = mergeBills(options.deletedBills.value, deletedBills);
+      LStorage.new("localBillData").setter(mergedBills);
+      LStorage.new("localBillRecycleBin").setter(mergedDeletedBills);
       options.initData();
       importExportInfo.value.show = false;
       importInfo.value.dataStr = "";
       importInfo.value.fileName = "";
-      showToast("总数据导入成功");
+      showToast("总数据合并导入成功");
     } catch {
       showToast("导入失败，请检查备份文件");
     }
@@ -112,7 +110,7 @@ export function useBackupActions(options: UseBackupActionsOptions) {
     importExportInfo,
     importInfo,
     importExportSummary,
-    hasImportOverwriteData,
+    hasImportLocalData,
     openImportExport,
     createBackupData,
     exportAllData,

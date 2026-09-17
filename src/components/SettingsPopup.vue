@@ -47,7 +47,7 @@
           </span>
           <span>
             <strong>导入总数据</strong>
-            <em>上传备份文件后恢复账单</em>
+            <em>上传备份文件，与本地账单合并</em>
           </span>
         </button>
 

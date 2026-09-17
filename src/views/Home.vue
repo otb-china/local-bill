@@ -207,7 +207,7 @@
 
     <ImportDataPopup
       v-model:show="importExportInfo.show"
-      :has-overwrite-data="hasImportOverwriteData"
+      :has-local-data="hasImportLocalData"
       :summary="importExportSummary"
       :file-name="importInfo.fileName"
       :has-file="Boolean(importInfo.dataStr)"
@@ -285,7 +285,7 @@ const {
   importExportInfo,
   importInfo,
   importExportSummary,
-  hasImportOverwriteData,
+  hasImportLocalData,
   openImportExport,
   exportAllData,
   onImportFileLoaded,

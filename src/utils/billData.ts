@@ -75,6 +75,41 @@ export function normalizeDeletedBills(list: RSA[] | undefined): DeletedBill[] {
   }));
 }
 
+export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]): T[] {
+  const merged = localBills.map((bill) => ({
+    ...bill,
+    items: bill.items.map((item) => ({ ...item })),
+  }));
+  const billsByName = new Map<string, T>();
+  const billIds = new Set(merged.map((bill) => bill.id));
+  for (const bill of merged) {
+    if (!billsByName.has(bill.name)) billsByName.set(bill.name, bill);
+  }
+
+  for (const imported of importedBills) {
+    let target = billsByName.get(imported.name);
+    if (!target) {
+      let id = imported.id;
+      while (billIds.has(id)) id = createId("bill");
+      target = { ...imported, id, items: [] };
+      merged.push(target);
+      billsByName.set(target.name, target);
+      billIds.add(id);
+    }
+
+    const itemIds = new Set(target.items.map((item) => item.id));
+    let addedItems = false;
+    for (const item of imported.items) {
+      if (itemIds.has(item.id)) continue;
+      target.items.push({ ...item });
+      itemIds.add(item.id);
+      addedItems = true;
+    }
+    if (addedItems) target.updatedAt = new Date().toISOString();
+  }
+  return merged;
+}
+
 function normalizePrice(value: unknown): number | "" {
   if (value === "" || value === null || value === undefined) return "";
   const price = Number(value);
