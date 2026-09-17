@@ -391,7 +391,7 @@ function addItem() {
 
 function canAppendItem() {
   if (!activeBill.value) return false;
-  return activeBill.value.items.every(isValidItem);
+  return activeBill.value.items.every((item) => item.voided || isValidItem(item));
 }
 
 function isValidItem(item: Bill["items"][number]) {
