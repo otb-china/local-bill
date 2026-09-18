@@ -1,6 +1,6 @@
 <template>
   <div class="home-page" :style="themeStyle">
-    <header ref="headerSection" class="page-header">
+    <header class="page-header">
       <div>
         <p class="hero-tag">Local Bill</p>
         <h1>{{ activeBill ? "账单明细" : "本地账单" }}</h1>
@@ -251,7 +251,6 @@ const SCROLL_TOP_THRESHOLD = 240;
 const RECYCLE_KEEP_DAYS = 7;
 const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
 
-const headerSection = ref<HTMLElement | null>(null);
 const showScrollTop = ref(false);
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
 const settingsPopup = ref(false);
