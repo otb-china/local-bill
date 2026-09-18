@@ -17,6 +17,7 @@ export function createEmptyBill(name = "未命名账单"): Bill {
   return {
     id: createId("bill"),
     name,
+    subtitle: "",
     items: [],
     createdAt: now,
     updatedAt: now,
@@ -52,6 +53,7 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
     return {
       id: String(item.id || createId("bill")),
       name: String(item.name || "未命名账单"),
+      subtitle: String(item.subtitle || ""),
       createdAt,
       updatedAt: String(item.updatedAt || createdAt),
       items: Array.isArray(item.items)
@@ -95,6 +97,11 @@ export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]):
       merged.push(target);
       billsByName.set(target.name, target);
       billIds.add(id);
+    }
+
+    if (!target.subtitle && imported.subtitle) {
+      target.subtitle = imported.subtitle;
+      target.updatedAt = new Date().toISOString();
     }
 
     const itemIds = new Set(target.items.map((item) => item.id));

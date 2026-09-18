@@ -39,6 +39,7 @@
             <span class="bill-card-name">{{ bill.name }}</span>
             <span class="bill-card-count">{{ bill.items.length }} 项</span>
           </div>
+          <span v-if="bill.subtitle" class="bill-card-subtitle">{{ bill.subtitle }}</span>
           <strong>¥{{ formatMoney(billTotal(bill)) }}</strong>
           <small v-if="getBillLatestCreatedDate(bill)" class="bill-card-meta">
             <time>{{ getBillLatestCreatedDate(bill) }}</time>
@@ -59,10 +60,15 @@
     <main v-else class="bill-detail-view">
       <section class="bill-editor">
         <div class="detail-summary">
-          <label class="field-label title-field">
-            <span>BILL NAME</span>
-            <input v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
-          </label>
+          <div class="bill-title-fields">
+            <label class="field-label title-field">
+              <span>BILL NAME</span>
+              <input v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
+            </label>
+            <label class="field-label">
+              <input v-model.trim="activeBill.subtitle" class="text-input subtitle-input" aria-label="副标题" placeholder="副标题" @input="touchActiveBill" />
+            </label>
+          </div>
 
           <div class="detail-total">
             <span>累计{{ validActiveBillItems.length }}项</span>
@@ -614,7 +620,10 @@ function createBillImage(bill: Bill) {
   ctx.fillText(bill.name || "未命名账单", 88, 124);
   ctx.fillStyle = "#72808c";
   ctx.font = "24px Arial, sans-serif";
-  ctx.fillText(`${validItems.length} 项`, 88, 164);
+  if (bill.subtitle) {
+    ctx.fillText(bill.subtitle, 88, 164);
+  }
+  ctx.fillText(`${validItems.length} 项`, 88, bill.subtitle ? 200 : 164);
 
   ctx.fillStyle = "#1f6b7b";
   ctx.font = "700 44px Arial, sans-serif";
@@ -836,6 +845,15 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 
+.bill-card-subtitle {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .bill-card-count {
   flex: 0 0 auto;
   color: var(--text-muted);
@@ -846,7 +864,8 @@ onUnmounted(() => {
 }
 
 .bill-card strong {
-  margin-top: 22px;
+  margin-top: auto;
+  padding-top: 22px;
   color: var(--accent-strong);
   font-size: 24px;
 }
@@ -898,6 +917,12 @@ onUnmounted(() => {
   align-items: end;
 }
 
+.bill-title-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
 .field-label {
   display: grid;
   gap: 7px;
@@ -929,6 +954,11 @@ onUnmounted(() => {
   color: var(--text-strong);
   font-size: 24px;
   font-weight: 700;
+}
+
+.subtitle-input {
+  color: var(--text-main);
+  font-size: 14px;
 }
 
 .detail-total {

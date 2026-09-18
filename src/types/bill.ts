@@ -11,6 +11,7 @@ export interface BillItem extends RSA {
 export interface Bill extends RSA {
   id: string;
   name: string;
+  subtitle: string;
   items: BillItem[];
   createdAt: string;
   updatedAt: string;
