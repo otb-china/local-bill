@@ -82,26 +82,24 @@ export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]):
     ...bill,
     items: bill.items.map((item) => ({ ...item })),
   }));
-  const billsByName = new Map<string, T>();
+  const billKey = (bill: Bill) => JSON.stringify([bill.name, bill.subtitle]);
+  const billsByKey = new Map<string, T>();
   const billIds = new Set(merged.map((bill) => bill.id));
   for (const bill of merged) {
-    if (!billsByName.has(bill.name)) billsByName.set(bill.name, bill);
+    const key = billKey(bill);
+    if (!billsByKey.has(key)) billsByKey.set(key, bill);
   }
 
   for (const imported of importedBills) {
-    let target = billsByName.get(imported.name);
+    const key = billKey(imported);
+    let target = billsByKey.get(key);
     if (!target) {
       let id = imported.id;
       while (billIds.has(id)) id = createId("bill");
       target = { ...imported, id, items: [] };
       merged.push(target);
-      billsByName.set(target.name, target);
+      billsByKey.set(key, target);
       billIds.add(id);
-    }
-
-    if (!target.subtitle && imported.subtitle) {
-      target.subtitle = imported.subtitle;
-      target.updatedAt = new Date().toISOString();
     }
 
     const itemIds = new Set(target.items.map((item) => item.id));
