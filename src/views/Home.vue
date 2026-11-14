@@ -32,7 +32,7 @@
     </header>
 
     <main v-if="!activeBill" class="bill-list-view">
-      <section v-if="visibleBills.length" class="bill-grid">
+      <section v-if="visibleBills.length" class="bill-list">
         <button
           v-for="bill in visibleBills"
           :key="bill.id"
@@ -40,14 +40,14 @@
           type="button"
           @click="openBill(bill.id)"
         >
-          <div class="bill-card-head">
+          <span class="bill-card-info">
             <span class="bill-card-name">{{ bill.name }}</span>
-            <span class="bill-card-count">{{ bill.items.length }} 项</span>
-          </div>
-          <span v-if="bill.subtitle" class="bill-card-subtitle">{{ bill.subtitle }}</span>
-          <strong>¥{{ formatMoney(billTotal(bill)) }}</strong>
-          <small v-if="getBillLatestCreatedDate(bill)" class="bill-card-meta">
-            <time>{{ getBillLatestCreatedDate(bill) }}</time>
+            <span v-if="bill.subtitle" class="bill-card-subtitle">{{ bill.subtitle }}</span>
+          </span>
+          <strong class="bill-card-amount">¥{{ formatMoney(billTotal(bill)) }}</strong>
+          <small class="bill-card-meta">
+            <span>累计 {{ bill.items.length }} 项</span>
+            <time v-if="getBillLatestCreatedDate(bill)">{{ getBillLatestCreatedDate(bill) }}</time>
           </small>
         </button>
       </section>
@@ -854,7 +854,6 @@ onUnmounted(() => {
 }
 
 .header-bill-count,
-.bill-card small,
 .empty-state span,
 .field-label span,
 .detail-total span {
@@ -862,74 +861,73 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.bill-grid {
+.bill-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
 }
 
 .bill-card {
-  min-height: 126px;
-  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 13px 16px;
   border: 0;
   border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow);
   text-align: left;
-  display: flex;
-  align-items: stretch;
-  flex-direction: column;
-  justify-content: flex-start;
 }
 
-.bill-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-height: 24px;
+.bill-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.bill-card strong {
-  display: block;
+.bill-card:active {
+  background: var(--surface-soft);
+}
+
+.bill-card-info {
+  display: grid;
+  gap: 3px;
 }
 
 .bill-card-name {
-  min-width: 0;
   color: var(--text-strong);
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .bill-card-subtitle {
-  display: block;
-  margin-top: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-subtle);
+  font-size: 13px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
-.bill-card-count {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
+.bill-card-amount {
+  color: var(--accent-strong);
+  font-size: clamp(18px, 5.2vw, 22px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: right;
   white-space: nowrap;
 }
 
-.bill-card strong {
-  margin-top: auto;
-  padding-top: 22px;
-  color: var(--accent-strong);
-  font-size: 24px;
-}
-
 .bill-card-meta {
-  display: block;
-  margin-top: 6px;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
 }
 
 .bill-card-meta time {
@@ -1277,10 +1275,6 @@ onUnmounted(() => {
   .header-icon,
   .add-bill-button {
     height: 42px;
-  }
-
-  .bill-grid {
-    grid-template-columns: 1fr 1fr;
   }
 
   .bill-editor,
