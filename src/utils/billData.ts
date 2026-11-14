@@ -1,5 +1,5 @@
 import type { RSA } from "otb-toolkit/src/types";
-import type { Bill, BillItem, DeletedBill } from "@/types/bill";
+import type { Bill, BillGroup, BillItem, DeletedBill } from "@/types/bill";
 
 export const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -19,6 +19,7 @@ export function createEmptyBill(name = "未命名账单"): Bill {
     name,
     subtitle: "",
     items: [],
+    groups: [{ id: createId("group"), name: "分组 1" }],
     createdAt: now,
     updatedAt: now,
   };
@@ -50,21 +51,41 @@ export function normalizeBills(list: RSA[] | undefined): Bill[] {
   const source = Array.isArray(list) ? list : [];
   return source.map((item): Bill => {
     const createdAt = String(item.createdAt || new Date().toISOString());
+    const groups: BillGroup[] = [];
+    const groupIds = new Set<string>();
+    if (Array.isArray(item.groups)) {
+      for (const group of item.groups) {
+        if (typeof group?.id !== "string" || !group.id || groupIds.has(group.id)) continue;
+        groups.push({ id: group.id, name: String(group.name || "未命名分组") });
+        groupIds.add(group.id);
+      }
+    }
+    const items: BillItem[] = Array.isArray(item.items)
+      ? item.items.map((child: RSA): BillItem => ({
+        id: String(child.id || createId("item")),
+        name: String(child.name || ""),
+        price: normalizePrice(child.price),
+        createdAt: normalizeItemCreatedAt(child.createdAt),
+        voided: Boolean(child.voided),
+        groupId: groupIds.has(child.groupId) ? child.groupId : undefined,
+      }))
+      : [];
+    const legacyName = typeof item.defaultGroupName === "string" ? item.defaultGroupName.trim() : "";
+    if (!groups.length || legacyName || items.some((child) => !child.groupId)) {
+      let id = "group-default";
+      while (groupIds.has(id)) id += "-legacy";
+      groups.unshift({ id, name: legacyName || "分组 1" });
+      for (const child of items) child.groupId ??= id;
+    }
     return {
       id: String(item.id || createId("bill")),
       name: String(item.name || "未命名账单"),
       subtitle: String(item.subtitle || ""),
       createdAt,
       updatedAt: String(item.updatedAt || createdAt),
-      items: Array.isArray(item.items)
-        ? item.items.map((child: RSA): BillItem => ({
-          id: String(child.id || createId("item")),
-          name: String(child.name || ""),
-          price: normalizePrice(child.price),
-          createdAt: normalizeItemCreatedAt(child.createdAt),
-          voided: Boolean(child.voided),
-        }))
-        : [],
+      groups,
+      itemMode: item.itemMode === "group" || item.itemMode === "date" ? item.itemMode : undefined,
+      items,
     };
   }).filter((item) => item.name);
 }
@@ -78,9 +99,10 @@ export function normalizeDeletedBills(list: RSA[] | undefined): DeletedBill[] {
 }
 
 export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]): T[] {
-  const merged = localBills.map((bill) => ({
+  const merged = localBills.map((bill): T => ({
     ...bill,
     items: bill.items.map((item) => ({ ...item })),
+    groups: bill.groups.map((group) => ({ ...group })),
   }));
   const billKey = (bill: Bill) => JSON.stringify([bill.name, bill.subtitle]);
   const billsByKey = new Map<string, T>();
@@ -96,12 +118,18 @@ export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]):
     if (!target) {
       let id = imported.id;
       while (billIds.has(id)) id = createId("bill");
-      target = { ...imported, id, items: [] };
+      target = { ...imported, id, items: [], groups: imported.groups.map((group) => ({ ...group })) };
       merged.push(target);
       billsByKey.set(key, target);
       billIds.add(id);
     }
 
+    const groupIds = new Set(target.groups.map((group) => group.id));
+    const addedGroups = imported.groups.filter((group) => !groupIds.has(group.id));
+    if (addedGroups.length) {
+      target.groups.push(...addedGroups.map((group) => ({ ...group })));
+    }
+    target.itemMode ??= imported.itemMode;
     const itemIds = new Set(target.items.map((item) => item.id));
     let addedItems = false;
     for (const item of imported.items) {
@@ -110,7 +138,7 @@ export function mergeBills<T extends Bill>(localBills: T[], importedBills: T[]):
       itemIds.add(item.id);
       addedItems = true;
     }
-    if (addedItems) target.updatedAt = new Date().toISOString();
+    if (addedItems || addedGroups.length) target.updatedAt = new Date().toISOString();
   }
   return merged;
 }

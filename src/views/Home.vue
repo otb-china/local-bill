@@ -97,60 +97,149 @@
         </div>
       </section>
 
-      <section class="items-panel">
+      <section
+        class="items-panel"
+        :key="activeBill.id"
+        @pointermove="moveDrag"
+        @pointerup="finishDrag"
+        @lostpointercapture="cancelDrag"
+      >
         <div class="section-row">
-          <div>
-            <p class="section-tag">Items</p>
+          <p class="section-tag">Items</p>
+          <div class="item-mode" role="group" aria-label="子项显示模式">
+            <button type="button" :aria-pressed="!groupMode" @click="setItemMode('date')">日期</button>
+            <button type="button" :aria-pressed="groupMode" @click="setItemMode('group')">分组</button>
           </div>
         </div>
 
         <div class="item-list">
-          <button class="add-item-row" type="button" @click="addItem">
+          <button v-if="groupMode" class="add-item-row" type="button" @click="addGroup">
+            <el-icon><Plus /></el-icon>
+            <span>新增分组</span>
+          </button>
+          <button v-else class="add-item-row" type="button" @click="addItem()">
             <el-icon><Plus /></el-icon>
             <span>新增子项</span>
           </button>
 
-          <van-swipe-cell v-for="item in sortedActiveBillItems" :key="item.id" class="item-swipe">
-            <div class="item-row" :class="{ 'has-created-at': item.createdAt, voided: item.voided }">
-              <label class="item-field item-name-field">
-                <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
-              </label>
-              <label class="item-field item-price-field">
-                <input
-                  v-model.number="item.price"
-                  class="text-input price-input"
-                  aria-label="金额"
-                  type="number"
-                  inputmode="decimal"
-                  min="0"
-                  step="0.01"
-                  @input="touchActiveBill"
-                />
-              </label>
-              <small
-                v-if="item.createdAt"
-                class="item-created-at"
-                title="双击修改时间"
-                @click.stop="handleItemTimeClick(item)"
+          <div
+            v-for="section in itemSections"
+            :key="section.id"
+            class="item-list"
+            :class="{
+              'item-group': groupMode,
+              'drag-source': drag?.kind === 'group' && drag.id === section.id,
+              'drop-group': drag?.kind === 'item' && drag.target?.groupId === section.id && !drag.target.itemId,
+            }"
+            :data-group-id="groupMode ? section.id : undefined"
+            :data-drop-side="drag?.kind === 'group' && drag.target?.groupId === section.id ? drag.target.side : undefined"
+          >
+            <div v-if="groupMode" class="item-group-header">
+              <button
+                v-if="allGroupsCollapsed"
+                class="drag-handle"
+                type="button"
+                aria-label="拖动分组"
+                @pointerdown="startDrag($event, 'group', section.id)"
+              >⠿</button>
+              <input
+                v-if="groupNameEdit?.id === section.id"
+                v-focus
+                v-model="groupNameEdit.name"
+                class="text-input group-name"
+                aria-label="分组名称"
+                @keydown.enter="!$event.isComposing && finishGroupName(section.id)"
+                @keydown.esc.stop="groupNameEdit = undefined"
+                @blur="finishGroupName(section.id)"
+              />
+              <button
+                v-else
+                class="group-toggle group-name"
+                type="button"
+                :aria-expanded="!collapsedGroups.has(section.id)"
+                @click="toggleGroup(section.id)"
               >
-                {{ item.createdAt }}
-              </small>
+                <el-icon><ArrowRight v-if="collapsedGroups.has(section.id)" /><ArrowDown v-else /></el-icon>
+                <strong>{{ section.name }}</strong>
+                <span class="group-count">{{ section.items.length }} 项</span>
+              </button>
+              <button
+                class="group-action"
+                type="button"
+                aria-label="编辑分组名称"
+                title="编辑分组名称"
+                @click="groupNameEdit = { id: section.id, name: section.name }"
+              ><el-icon><Edit /></el-icon></button>
+              <button class="group-action" type="button" aria-label="新增子项" title="新增子项" @click="addItem(section.id)">
+                <el-icon><Plus /></el-icon>
+              </button>
+              <button
+                v-if="itemSections.length > 1 && !section.items.length"
+                class="group-action"
+                type="button"
+                aria-label="删除分组"
+                title="删除分组"
+                @click="removeGroup(section.id)"
+              ><el-icon><Delete /></el-icon></button>
             </div>
-            <template #right>
-              <button class="swipe-action time" type="button" aria-label="设置时间" @click="openItemTimeEditor(item)">
-                <el-icon><Clock /></el-icon>
-                <span>时间</span>
-              </button>
-              <button class="swipe-action void" type="button" aria-label="作废子项" @click="toggleItemVoided(item)">
-                <el-icon><CircleClose /></el-icon>
-                <span>{{ item.voided ? "恢复" : "作废" }}</span>
-              </button>
-              <button class="swipe-action danger" type="button" aria-label="删除子项" @click="removeItem(item.id)">
-                <el-icon><Delete /></el-icon>
-                <span>删除</span>
-              </button>
-            </template>
-          </van-swipe-cell>
+            <van-swipe-cell
+              v-for="item in groupMode && collapsedGroups.has(section.id) ? [] : section.items"
+              :key="item.id"
+              class="item-swipe"
+              :data-item-id="groupMode ? item.id : undefined"
+              :class="{ 'drag-source': drag?.kind === 'item' && drag.id === item.id }"
+              :data-drop-side="drag?.kind === 'item' && drag.target?.itemId === item.id ? drag.target.side : undefined"
+            >
+              <div class="item-row" :class="{ 'has-created-at': !groupMode && item.createdAt, 'grouped-item': groupMode, voided: item.voided }">
+                <button
+                  v-if="groupMode"
+                  class="drag-handle item-drag-handle"
+                  type="button"
+                  aria-label="拖动子项"
+                  @touchstart.stop
+                  @touchmove.stop
+                  @pointerdown="startDrag($event, 'item', item.id)"
+                >⠿</button>
+                <label class="item-field item-name-field">
+                  <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
+                </label>
+                <label class="item-field item-price-field">
+                  <input
+                    v-model.number="item.price"
+                    class="text-input price-input"
+                    aria-label="金额"
+                    type="number"
+                    inputmode="decimal"
+                    min="0"
+                    step="0.01"
+                    @input="touchActiveBill"
+                  />
+                </label>
+                <small
+                  v-if="!groupMode && item.createdAt"
+                  class="item-created-at"
+                  title="双击修改时间"
+                  @click.stop="handleItemTimeClick(item)"
+                >
+                  {{ item.createdAt }}
+                </small>
+              </div>
+              <template #right>
+                <button class="swipe-action time" type="button" aria-label="设置时间" @click="openItemTimeEditor(item)">
+                  <el-icon><Clock /></el-icon>
+                  <span>时间</span>
+                </button>
+                <button class="swipe-action void" type="button" aria-label="作废子项" @click="toggleItemVoided(item)">
+                  <el-icon><CircleClose /></el-icon>
+                  <span>{{ item.voided ? "恢复" : "作废" }}</span>
+                </button>
+                <button class="swipe-action danger" type="button" aria-label="删除子项" @click="removeItem(item.id)">
+                  <el-icon><Delete /></el-icon>
+                  <span>删除</span>
+                </button>
+              </template>
+            </van-swipe-cell>
+          </div>
         </div>
       </section>
     </main>
@@ -232,7 +321,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { Back, CircleClose, Clock, CopyDocument, Delete, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowRight, Back, CircleClose, Clock, CopyDocument, Delete, Edit, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -297,7 +386,35 @@ const visibleBills = computed(() => {
 });
 const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
 const validActiveBillItems = computed(() => activeBill.value ? getValidItems(activeBill.value.items) : []);
-const sortedActiveBillItems = computed(() => activeBill.value ? sortItemsByCreatedAt(activeBill.value.items) : []);
+const groupMode = computed(() => activeBill.value?.itemMode === "group");
+const collapsedGroups = ref(new Set<string>());
+const groupNameEdit = ref<{ id: string; name: string }>();
+const vFocus = {
+  mounted(input: HTMLInputElement) {
+    input.focus();
+    input.select();
+  },
+};
+type DropTarget = { groupId: string; itemId?: string; side: "before" | "after" };
+const drag = ref<{
+  kind: "group" | "item";
+  id: string;
+  pointerId: number;
+  target?: DropTarget;
+}>();
+let dragFrame = 0;
+let dragX = 0;
+let dragY = 0;
+
+const itemSections = computed(() => {
+  const bill = activeBill.value;
+  if (!bill) return [];
+  if (!groupMode.value) return [{ id: "", name: "", items: sortItemsByCreatedAt(bill.items) }];
+  return getBillGroups(bill);
+});
+const allGroupsCollapsed = computed(() =>
+  groupMode.value && itemSections.value.every((section) => collapsedGroups.value.has(section.id)),
+);
 
 const {
   importExportInfo,
@@ -320,6 +437,9 @@ const {
 watch(bills, saveBills, { deep: true });
 watch(deletedBills, saveDeletedBills, { deep: true });
 watch(() => activeBill.value?.id, async (billId, previousBillId) => {
+  cancelDrag();
+  collapsedGroups.value.clear();
+  groupNameEdit.value = undefined;
   if (!previousBillId && billId) {
     billListScrollY = window.scrollY;
   }
@@ -368,7 +488,7 @@ function init() {
 
 function addBill() {
   const bill = createEmptyBill(`账单 ${bills.value.length + 1}`);
-  bill.items.push(createEmptyBillItem());
+  bill.items.push({ ...createEmptyBillItem(), groupId: bill.groups[0].id });
   bills.value.unshift(bill);
   billSearch.value = "";
   activeBillId.value = bill.id;
@@ -382,6 +502,7 @@ function copyActiveBill() {
     ...source,
     id: createId("bill"),
     name: `${source.name}（复制）`,
+    groups: source.groups.map((group) => ({ ...group })),
     items: source.items.map((item) => ({ ...item, id: createId("item") })),
     createdAt: now,
     updatedAt: now,
@@ -406,13 +527,149 @@ function touchActiveBill() {
   activeBill.value.updatedAt = new Date().toISOString();
 }
 
-function addItem() {
-  if (!activeBill.value) return;
+function setItemMode(mode: "date" | "group") {
+  if (!activeBill.value || groupMode.value === (mode === "group")) return;
+  cancelDrag();
+  groupNameEdit.value = undefined;
+  activeBill.value.itemMode = mode;
+  touchActiveBill();
+}
+
+function getBillGroups(bill: Bill) {
+  const sections = bill.groups.map((group) => ({ ...group, items: [] as BillItem[] }));
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  for (const item of bill.items) {
+    (byId.get(item.groupId ?? "") ?? sections[0]).items.push(item);
+  }
+  return sections;
+}
+
+function addGroup() {
+  const bill = activeBill.value;
+  if (!bill) return;
+  const names = new Set(bill.groups.map((group) => group.name));
+  let number = 1;
+  while (names.has(`分组 ${number}`)) number++;
+  bill.groups.push({ id: createId("group"), name: `分组 ${number}` });
+  touchActiveBill();
+}
+
+function finishGroupName(id: string) {
+  const bill = activeBill.value;
+  if (!bill || groupNameEdit.value?.id !== id) return;
+  const name = groupNameEdit.value.name.trim();
+  groupNameEdit.value = undefined;
+  const group = bill.groups.find((entry) => entry.id === id);
+  if (!group || !name || name === group.name) return;
+  group.name = name;
+  touchActiveBill();
+}
+
+function toggleGroup(id: string) {
+  if (!collapsedGroups.value.delete(id)) collapsedGroups.value.add(id);
+}
+
+function removeGroup(id: string) {
+  const bill = activeBill.value;
+  if (!bill || !groupMode.value || bill.groups.length <= 1) return;
+  const section = itemSections.value.find((entry) => entry.id === id);
+  if (!section || section.items.length) return;
+  bill.groups = bill.groups.filter((group) => group.id !== id);
+  collapsedGroups.value.delete(id);
+  touchActiveBill();
+}
+
+function startDrag(event: PointerEvent, kind: "group" | "item", id: string) {
+  if (event.button !== 0 || drag.value || !groupMode.value) return;
+  if (kind === "group" && !allGroupsCollapsed.value) return;
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  drag.value = { kind, id, pointerId: event.pointerId };
+  dragX = event.clientX;
+  dragY = event.clientY;
+  dragFrame = requestAnimationFrame(scrollDuringDrag);
+}
+
+function moveDrag(event: PointerEvent) {
+  if (drag.value?.pointerId !== event.pointerId) return;
+  dragX = event.clientX;
+  dragY = event.clientY;
+  updateDropTarget();
+}
+
+function updateDropTarget() {
+  const current = drag.value;
+  if (!current) return;
+  const element = document.elementFromPoint(dragX, dragY);
+  const group = element?.closest<HTMLElement>("[data-group-id]");
+  const groupId = group?.dataset.groupId;
+  const item = current.kind === "item" ? element?.closest<HTMLElement>("[data-item-id]") : undefined;
+  const itemId = item?.dataset.itemId;
+  current.target = undefined;
+  if (!group || groupId === undefined) return;
+  if (current.kind === "group" && groupId === current.id) return;
+  if (itemId === current.id) return;
+  const rect = (item ?? group).getBoundingClientRect();
+  current.target = { groupId, itemId, side: dragY < rect.top + rect.height / 2 ? "before" : "after" };
+}
+
+function scrollDuringDrag() {
+  const edge = 72;
+  const distanceFromBottom = window.innerHeight - dragY;
+  const speed = dragY < edge ? -(edge - dragY) : Math.max(0, edge - distanceFromBottom);
+  if (speed) {
+    window.scrollBy(0, speed / 5);
+    updateDropTarget();
+  }
+  dragFrame = requestAnimationFrame(scrollDuringDrag);
+}
+
+function cancelDrag(event?: PointerEvent) {
+  if (event && drag.value?.pointerId !== event.pointerId) return;
+  cancelAnimationFrame(dragFrame);
+  drag.value = undefined;
+}
+
+function finishDrag(event: PointerEvent) {
+  const current = drag.value;
+  if (current?.pointerId !== event.pointerId) return;
+  moveDrag(event);
+  cancelDrag();
+  const bill = activeBill.value;
+  const target = current.target;
+  if (!bill || !target) return;
+
+  if (current.kind === "group") {
+    if (!allGroupsCollapsed.value) return;
+    const groups = bill.groups;
+    const from = groups.findIndex((group) => group.id === current.id);
+    if (from === -1) return;
+    const [group] = groups.splice(from, 1);
+    const to = groups.findIndex((entry) => entry.id === target.groupId);
+    groups.splice(to + Number(target.side === "after"), 0, group);
+  } else {
+    const from = bill.items.findIndex((item) => item.id === current.id);
+    if (from === -1) return;
+    const [item] = bill.items.splice(from, 1);
+    item.groupId = target.groupId;
+    const to = bill.items.findIndex((entry) => entry.id === target.itemId);
+    if (to === -1) bill.items.push(item);
+    else bill.items.splice(to + Number(target.side === "after"), 0, item);
+  }
+  touchActiveBill();
+}
+
+function addItem(groupId?: string) {
+  const bill = activeBill.value;
+  if (!bill) return;
   if (!canAppendItem()) {
     showToast("请先填写当前子项的名称和价格");
     return;
   }
-  activeBill.value.items.unshift(createEmptyBillItem());
+  const item = { ...createEmptyBillItem(), groupId: groupId ?? bill.groups[0].id };
+  if (groupMode.value) {
+    collapsedGroups.value.delete(item.groupId);
+  }
+  bill.items.unshift(item);
   touchActiveBill();
 }
 
@@ -610,7 +867,10 @@ async function shareBillImage() {
 }
 
 function createBillImage(bill: Bill) {
-  const validItems = getValidItems(sortItemsByCreatedAt(bill.items));
+  const items = bill.itemMode === "group"
+    ? getBillGroups(bill).flatMap((section) => section.items)
+    : sortItemsByCreatedAt(bill.items);
+  const validItems = getValidItems(items);
   const width = 900;
   const rowHeight = 64;
   const listStartY = 256;
@@ -700,6 +960,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  cancelDrag();
   window.removeEventListener("scroll", updateScrollTopVisibility);
 });
 </script>
@@ -1067,6 +1328,149 @@ onUnmounted(() => {
   margin-bottom: 14px;
 }
 
+.item-mode {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.item-mode button,
+.group-action,
+.group-toggle,
+.drag-handle {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.item-mode button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+}
+
+.item-mode button[aria-pressed="true"] {
+  background: var(--header-icon-bg);
+}
+
+.item-group {
+  min-width: 0;
+  gap: 6px;
+  padding: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 45%, var(--divider));
+  border-radius: 14px;
+}
+
+.item-group:not(:has(.item-swipe)) {
+  padding-bottom: 0;
+}
+
+.item-group-header {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 48px;
+  padding: 4px 6px;
+  border-radius: 13px;
+  background: var(--header-icon-bg);
+}
+
+.group-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 3px;
+  text-align: left;
+}
+
+.group-toggle strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.group-toggle .el-icon,
+.group-count {
+  flex: none;
+}
+
+.group-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.item-group-header input {
+  width: 0;
+  height: 36px;
+  padding: 5px 8px;
+}
+
+.group-action,
+.drag-handle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 34px;
+  min-height: 36px;
+  padding: 0 7px;
+  border-radius: 10px;
+}
+
+.group-action {
+  min-width: 28px;
+  padding: 0 5px;
+}
+
+.drag-handle {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  font-size: 19px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.item-drag-handle {
+  min-width: 28px;
+  padding: 0;
+}
+
+.item-group > .item-swipe {
+  margin: 0 8px;
+}
+
+.drag-source {
+  opacity: 0.55;
+}
+
+.drop-group {
+  outline: 2px solid var(--accent);
+}
+
+[data-drop-side="before"] {
+  box-shadow: 0 -3px var(--accent);
+}
+
+[data-drop-side="after"] {
+  box-shadow: 0 3px var(--accent);
+}
+
 .add-item-row {
   width: 100%;
   height: 66px;
@@ -1120,6 +1524,17 @@ onUnmounted(() => {
 
 .item-row.has-created-at {
   padding-top: 30px;
+}
+
+.item-row.grouped-item {
+  grid-template-columns: auto minmax(0, 1fr) minmax(68px, 26%);
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 3px;
+}
+
+.grouped-item .text-input {
+  height: 36px;
 }
 
 .item-row.voided {

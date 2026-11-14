@@ -6,6 +6,12 @@ export interface BillItem extends RSA {
   price: number | "";
   createdAt: string;
   voided?: boolean;
+  groupId?: string;
+}
+
+export interface BillGroup {
+  id: string;
+  name: string;
 }
 
 export interface Bill extends RSA {
@@ -13,6 +19,8 @@ export interface Bill extends RSA {
   name: string;
   subtitle: string;
   items: BillItem[];
+  groups: BillGroup[];
+  itemMode?: "date" | "group";
   createdAt: string;
   updatedAt: string;
 }
