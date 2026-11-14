@@ -559,7 +559,7 @@ function addGroup() {
   const names = new Set(bill.groups.map((group) => group.name));
   let number = 1;
   while (names.has(`分组 ${number}`)) number++;
-  bill.groups.push({ id: createId("group"), name: `分组 ${number}` });
+  bill.groups.unshift({ id: createId("group"), name: `分组 ${number}` });
   touchActiveBill();
 }
 
