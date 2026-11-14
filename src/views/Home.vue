@@ -103,6 +103,8 @@
         @pointermove="moveDrag"
         @pointerup="finishDrag"
         @lostpointercapture="cancelDrag"
+        @touchend="finishTouchDrag"
+        @touchcancel="cancelTouchDrag"
       >
         <div class="section-row">
           <p class="section-tag">Items</p>
@@ -141,6 +143,9 @@
                 type="button"
                 aria-label="拖动分组"
                 @pointerdown="startDrag($event, 'group', section.id)"
+                @touchstart.stop="prepareTouchDrag($event, 'group', section.id)"
+                @touchmove.stop="moveTouchDrag"
+                @contextmenu.prevent
               >⠿</button>
               <input
                 v-if="groupNameEdit?.id === section.id"
@@ -196,9 +201,10 @@
                   class="drag-handle item-drag-handle"
                   type="button"
                   aria-label="拖动子项"
-                  @touchstart.stop
-                  @touchmove.stop
                   @pointerdown="startDrag($event, 'item', item.id)"
+                  @touchstart.stop="prepareTouchDrag($event, 'item', item.id)"
+                  @touchmove.stop="moveTouchDrag"
+                  @contextmenu.prevent
                 >⠿</button>
                 <label class="item-field item-name-field">
                   <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
@@ -342,6 +348,8 @@ import type { Bill, BillItem, DeletedBill } from "@/types/bill";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
+const DRAG_HOLD_MS = 320;
+const DRAG_MOVE_THRESHOLD = 8;
 const RECYCLE_KEEP_DAYS = 7;
 const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
 
@@ -396,12 +404,13 @@ const vFocus = {
   },
 };
 type DropTarget = { groupId: string; itemId?: string; side: "before" | "after" };
-const drag = ref<{
+type DragSource = {
   kind: "group" | "item";
   id: string;
   pointerId: number;
-  target?: DropTarget;
-}>();
+};
+const drag = ref<DragSource & { target?: DropTarget }>();
+let pendingTouchDrag: (DragSource & { startX: number; startY: number; startedAt: number }) | undefined;
 let dragFrame = 0;
 let dragX = 0;
 let dragY = 0;
@@ -580,19 +589,79 @@ function removeGroup(id: string) {
 }
 
 function startDrag(event: PointerEvent, kind: "group" | "item", id: string) {
-  if (event.button !== 0 || drag.value || !groupMode.value) return;
+  if (event.pointerType === "touch" || event.button !== 0 || drag.value || !groupMode.value) return;
   if (kind === "group" && !allGroupsCollapsed.value) return;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  drag.value = { kind, id, pointerId: event.pointerId };
-  dragX = event.clientX;
-  dragY = event.clientY;
+  activateDrag({ kind, id, pointerId: event.pointerId }, event);
+}
+
+function prepareTouchDrag(event: TouchEvent, kind: "group" | "item", id: string) {
+  if (event.touches.length !== 1) {
+    cancelTouchDrag();
+    return;
+  }
+  if (drag.value || !groupMode.value || (kind === "group" && !allGroupsCollapsed.value)) return;
+  const touch = event.changedTouches[0];
+  pendingTouchDrag = {
+    kind,
+    id,
+    pointerId: touch.identifier,
+    startX: touch.clientX,
+    startY: touch.clientY,
+    startedAt: event.timeStamp,
+  };
+}
+
+function moveTouchDrag(event: TouchEvent) {
+  const pending = pendingTouchDrag;
+  if (!pending) return;
+  if (event.touches.length !== 1 || !event.cancelable) {
+    cancelTouchDrag();
+    return;
+  }
+  const touch = event.touches[0];
+  if (touch.identifier !== pending.pointerId) return;
+  if (!drag.value) {
+    const distance = Math.hypot(touch.clientX - pending.startX, touch.clientY - pending.startY);
+    if (distance < DRAG_MOVE_THRESHOLD) return;
+    if (event.timeStamp - pending.startedAt < DRAG_HOLD_MS) {
+      cancelTouchDrag();
+      return;
+    }
+    activateDrag({ kind: pending.kind, id: pending.id, pointerId: pending.pointerId }, touch);
+  }
+  event.preventDefault();
+  trackDrag(touch);
+}
+
+function finishTouchDrag(event: TouchEvent) {
+  const pending = pendingTouchDrag;
+  if (!pending) return;
+  const touch = Array.from(event.changedTouches).find((entry) => entry.identifier === pending.pointerId);
+  if (!touch) return;
+  if (drag.value) dropDrag(touch);
+  else cancelTouchDrag();
+}
+
+function cancelTouchDrag() {
+  if (pendingTouchDrag) cancelDrag();
+}
+
+function activateDrag(source: DragSource, position: { clientX: number; clientY: number }) {
+  drag.value = source;
+  dragX = position.clientX;
+  dragY = position.clientY;
   dragFrame = requestAnimationFrame(scrollDuringDrag);
 }
 
 function moveDrag(event: PointerEvent) {
-  if (drag.value?.pointerId !== event.pointerId) return;
-  dragX = event.clientX;
-  dragY = event.clientY;
+  if (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId) return;
+  trackDrag(event);
+}
+
+function trackDrag(position: { clientX: number; clientY: number }) {
+  dragX = position.clientX;
+  dragY = position.clientY;
   updateDropTarget();
 }
 
@@ -624,15 +693,21 @@ function scrollDuringDrag() {
 }
 
 function cancelDrag(event?: PointerEvent) {
-  if (event && drag.value?.pointerId !== event.pointerId) return;
+  if (event && (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId)) return;
   cancelAnimationFrame(dragFrame);
   drag.value = undefined;
+  pendingTouchDrag = undefined;
 }
 
 function finishDrag(event: PointerEvent) {
+  if (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId) return;
+  dropDrag(event);
+}
+
+function dropDrag(position: { clientX: number; clientY: number }) {
   const current = drag.value;
-  if (current?.pointerId !== event.pointerId) return;
-  moveDrag(event);
+  if (!current) return;
+  trackDrag(position);
   cancelDrag();
   const bill = activeBill.value;
   const target = current.target;
@@ -1436,8 +1511,9 @@ onUnmounted(() => {
 }
 
 .drag-handle {
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
   user-select: none;
+  -webkit-touch-callout: none;
   cursor: grab;
   font-size: 19px;
 }
