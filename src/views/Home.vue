@@ -911,7 +911,7 @@ onUnmounted(() => {
 
 .bill-card-amount {
   color: var(--accent-strong);
-  font-size: clamp(18px, 5.2vw, 22px);
+  font-size: clamp(20px, 6.4vw, 26px);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   text-align: right;
