@@ -2,34 +2,39 @@
   <div class="home-page" :style="themeStyle">
     <header class="page-header">
       <div>
-        <p class="hero-tag">Local Bill</p>
-        <h1>{{ activeBill ? "账单明细" : "本地账单" }}</h1>
+        <p v-if="activeBill" class="hero-tag">Local Bill</p>
+        <div class="header-title">
+          <h1>{{ activeBill ? "账单明细" : "本地账单" }}</h1>
+          <span v-if="!activeBill" class="header-bill-count">{{ bills.length }} 个账单</span>
+        </div>
       </div>
       <div class="header-actions">
-        <button v-if="activeBill" class="header-icon" type="button" @click="closeBill">
+        <button v-if="activeBill" class="header-icon" type="button" aria-label="返回账单列表" @click="closeBill">
           <el-icon><Back /></el-icon>
         </button>
-        <button v-if="showScrollTop" class="header-icon" type="button" @click="scrollToTop">
+        <button v-if="showScrollTop" class="header-icon" type="button" aria-label="回到顶部" @click="scrollToTop">
           <el-icon><Top /></el-icon>
         </button>
-        <button class="header-icon" type="button" @click="settingsPopup = true">
+        <button class="header-icon" type="button" aria-label="设置" @click="settingsPopup = true">
           <el-icon><Setting /></el-icon>
+        </button>
+      </div>
+      <div v-if="!activeBill" class="bill-toolbar">
+        <label class="bill-search">
+          <el-icon aria-hidden="true"><Search /></el-icon>
+          <input v-model="billSearch" type="search" aria-label="搜索账单" placeholder="搜索账单" @keydown.esc="billSearch = ''" />
+        </label>
+        <button class="add-bill-button" type="button" @click="addBill">
+          <el-icon aria-hidden="true"><Plus /></el-icon>
+          <span>新增账单</span>
         </button>
       </div>
     </header>
 
     <main v-if="!activeBill" class="bill-list-view">
-      <section class="summary-band">
-        <div>
-          <p class="section-tag">Total</p>
-          <strong>¥{{ formatMoney(grandTotal) }}</strong>
-        </div>
-        <span>{{ bills.length }} 个账单</span>
-      </section>
-
-      <section class="bill-grid">
+      <section v-if="visibleBills.length" class="bill-grid">
         <button
-          v-for="bill in sortedBills"
+          v-for="bill in visibleBills"
           :key="bill.id"
           class="bill-card"
           type="button"
@@ -45,15 +50,15 @@
             <time>{{ getBillLatestCreatedDate(bill) }}</time>
           </small>
         </button>
-
-        <button class="add-bill-card" type="button" @click="addBill">
-          <el-icon><Plus /></el-icon>
-        </button>
       </section>
 
-      <div v-if="!bills.length" class="empty-state">
+      <div v-else-if="!bills.length" class="empty-state">
         <strong>还没有账单</strong>
-        <span>点击加号创建第一张本地账单。</span>
+        <span>点击顶部「新增账单」创建第一张账单。</span>
+      </div>
+      <div v-else class="empty-state">
+        <strong>没有匹配的账单</strong>
+        <span>试试其他账单名或副标题。</span>
       </div>
     </main>
 
@@ -227,7 +232,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { Back, CircleClose, Clock, CopyDocument, Delete, Plus, Setting, Share, Top } from "@element-plus/icons-vue";
+import { Back, CircleClose, Clock, CopyDocument, Delete, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -266,6 +271,7 @@ const itemTimeTap = ref({
   time: 0,
 });
 const bills = ref<Bill[]>([]);
+const billSearch = ref("");
 const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
 
@@ -280,8 +286,14 @@ const currentThemeOption = computed(() => {
 });
 const themeStyle = computed(() => currentThemeOption.value.variables);
 const activeBill = computed(() => bills.value.find((bill) => bill.id === activeBillId.value));
-const grandTotal = computed(() => bills.value.reduce((total, bill) => total + billTotal(bill), 0));
 const sortedBills = computed(() => sortBillsByLatestItemCreatedDate(bills.value));
+const visibleBills = computed(() => {
+  const keyword = billSearch.value.trim().toLowerCase();
+  if (!keyword) return sortedBills.value;
+  return sortedBills.value.filter((bill) =>
+    bill.name.toLowerCase().includes(keyword) || bill.subtitle.toLowerCase().includes(keyword),
+  );
+});
 const activeBillTotal = computed(() => activeBill.value ? billTotal(activeBill.value) : 0);
 const validActiveBillItems = computed(() => activeBill.value ? getValidItems(activeBill.value.items) : []);
 const sortedActiveBillItems = computed(() => activeBill.value ? sortItemsByCreatedAt(activeBill.value.items) : []);
@@ -346,6 +358,7 @@ function addBill() {
   const bill = createEmptyBill(`账单 ${bills.value.length + 1}`);
   bill.items.push(createEmptyBillItem());
   bills.value.unshift(bill);
+  billSearch.value = "";
   activeBillId.value = bill.id;
   nextTick(scrollToTop);
 }
@@ -705,9 +718,9 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   margin: -12px -12px 12px;
   padding: 18px max(18px, calc((100vw - 780px) / 2 + 18px)) 16px;
@@ -725,14 +738,19 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.page-header h1 {
-  margin: 0;
-  color: var(--text-strong);
+.header-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
 }
 
 .page-header h1 {
+  margin: 0;
+  color: var(--text-strong);
   font-size: 34px;
   line-height: 1.08;
+  white-space: nowrap;
 }
 
 .header-actions,
@@ -747,7 +765,46 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.bill-toolbar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.bill-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: var(--field-bg);
+  color: var(--text-subtle);
+}
+
+.bill-search:focus-within {
+  border-color: var(--accent);
+}
+
+.bill-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.bill-search input::placeholder {
+  color: var(--text-subtle);
+}
+
 .header-icon,
+.add-bill-button,
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -761,13 +818,28 @@ onUnmounted(() => {
   font-size: 18px;
 }
 
+.add-bill-button {
+  width: auto;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--accent-strong);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.add-bill-button .el-icon {
+  font-size: 16px;
+}
+
 .icon-button.danger,
 .text-action.danger {
   background: var(--danger-bg);
   color: var(--danger-text);
 }
 
-.summary-band,
 .bill-editor,
 .items-panel {
   margin-bottom: 14px;
@@ -777,21 +849,11 @@ onUnmounted(() => {
   box-shadow: 0 14px 34px rgba(38, 56, 88, 0.08);
 }
 
-.summary-band {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
+.header-bill-count {
+  white-space: nowrap;
 }
 
-.summary-band strong {
-  display: block;
-  color: var(--accent-strong);
-  font-size: 34px;
-  line-height: 1;
-}
-
-.summary-band span,
+.header-bill-count,
 .bill-card small,
 .empty-state span,
 .field-label span,
@@ -806,8 +868,7 @@ onUnmounted(() => {
   gap: 12px;
 }
 
-.bill-card,
-.add-bill-card {
+.bill-card {
   min-height: 126px;
   padding: 16px;
   border: 0;
@@ -815,9 +876,6 @@ onUnmounted(() => {
   background: var(--surface);
   box-shadow: var(--shadow);
   text-align: left;
-}
-
-.bill-card {
   display: flex;
   align-items: stretch;
   flex-direction: column;
@@ -876,16 +934,6 @@ onUnmounted(() => {
 
 .bill-card-meta time {
   white-space: nowrap;
-}
-
-.add-bill-card {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  background: var(--surface);
-  font-size: 32px;
-  text-align: center;
 }
 
 .empty-state {
@@ -1215,15 +1263,19 @@ onUnmounted(() => {
 
   .page-header {
     margin: -10px -10px 10px;
-    padding: 18px 24px 16px;
+    padding: 12px 16px;
   }
 
   .page-header h1 {
-    font-size: 30px;
+    font-size: 26px;
   }
 
   .header-icon {
     width: 42px;
+  }
+
+  .header-icon,
+  .add-bill-button {
     height: 42px;
   }
 
@@ -1231,7 +1283,6 @@ onUnmounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 
-  .summary-band,
   .bill-editor,
   .items-panel {
     padding: 14px;
@@ -1276,4 +1327,5 @@ onUnmounted(() => {
     justify-content: flex-end;
   }
 }
+
 </style>
