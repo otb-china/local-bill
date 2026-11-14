@@ -274,6 +274,7 @@ const bills = ref<Bill[]>([]);
 const billSearch = ref("");
 const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
+let billListScrollY = 0;
 
 const billStorage = LStorage.new("localBillData");
 const recycleStorage = LStorage.new("localBillRecycleBin");
@@ -318,6 +319,17 @@ const {
 
 watch(bills, saveBills, { deep: true });
 watch(deletedBills, saveDeletedBills, { deep: true });
+watch(() => activeBill.value?.id, async (billId, previousBillId) => {
+  if (!previousBillId && billId) {
+    billListScrollY = window.scrollY;
+  }
+
+  await nextTick();
+  if (activeBill.value?.id !== billId) return;
+
+  window.scrollTo({ top: billId ? 0 : billListScrollY, behavior: "instant" });
+  updateScrollTopVisibility();
+});
 
 function billTotal(bill: Bill) {
   return sumBillItems(getValidItems(bill.items));
@@ -360,7 +372,6 @@ function addBill() {
   bills.value.unshift(bill);
   billSearch.value = "";
   activeBillId.value = bill.id;
-  nextTick(scrollToTop);
 }
 
 function copyActiveBill() {
@@ -377,13 +388,11 @@ function copyActiveBill() {
   };
   bills.value.unshift(copy);
   activeBillId.value = copy.id;
-  nextTick(scrollToTop);
   showToast("账单已复制");
 }
 
 function openBill(id: string) {
   activeBillId.value = id;
-  nextTick(scrollToTop);
 }
 
 function closeBill() {
