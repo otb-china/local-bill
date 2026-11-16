@@ -161,7 +161,7 @@
                 title="按住拖动排序"
                 @pointerdown="startDrag($event, 'group', section.id)"
                 @touchstart.stop
-                @touchmove.stop
+                @touchmove="handleDragTouchMove"
                 @contextmenu.prevent
               >⠿</button>
               <input
@@ -226,7 +226,7 @@
                   title="按住拖动排序"
                   @pointerdown="startDrag($event, 'item', item.id)"
                   @touchstart.stop
-                  @touchmove.stop
+                  @touchmove="handleDragTouchMove"
                   @contextmenu.prevent
                 >⠿</button>
                 <label class="item-field item-name-field">
@@ -394,6 +394,8 @@ const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
 const DRAG_MOVE_THRESHOLD = 4;
 const DRAG_SCROLL_EDGE = 80;
+const DRAG_HOLD_MS = 250;
+const DRAG_TOUCH_SLOP = 8;
 const RECYCLE_KEEP_DAYS = 7;
 const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
 
@@ -463,7 +465,7 @@ let dragChanged = false;
 let pendingDrag: (DragSource & { startX: number; startY: number; element: HTMLElement; panel: HTMLElement }) | undefined;
 let dragElement: HTMLElement | undefined;
 let dragPanel: HTMLElement | undefined;
-let collapsedBeforeGroupDrag: Set<string> | undefined;
+let dragHoldTimer = 0;
 let dragFrame = 0;
 let dragY = 0;
 let dragGrabY = 0;
@@ -659,15 +661,30 @@ function startDrag(event: PointerEvent, kind: "group" | "item", id: string) {
   const element = handle.closest<HTMLElement>(kind === "group" ? "[data-group-id]" : "[data-item-id]");
   const panel = handle.closest<HTMLElement>(".items-panel");
   if (!element || !panel) return;
-  event.preventDefault();
+  if (event.pointerType === "mouse") event.preventDefault();
   panel.setPointerCapture(event.pointerId);
   pendingDrag = { kind, id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, element, panel };
+  if (event.pointerType !== "mouse") {
+    const pending = pendingDrag;
+    dragHoldTimer = window.setTimeout(() => {
+      if (pendingDrag === pending) activateDrag(pending);
+    }, DRAG_HOLD_MS);
+  }
+}
+
+function handleDragTouchMove(event: TouchEvent) {
+  event.stopPropagation();
+  if (drag.value && event.cancelable) event.preventDefault();
 }
 
 function moveDrag(event: PointerEvent) {
   const pending = pendingDrag;
   if (!drag.value && pending?.pointerId === event.pointerId) {
     const distance = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY);
+    if (event.pointerType !== "mouse") {
+      if (distance > DRAG_TOUCH_SLOP) resetDragState();
+      return;
+    }
     if (distance < DRAG_MOVE_THRESHOLD) return;
     activateDrag(pending);
   }
@@ -680,6 +697,7 @@ function activateDrag(pending: NonNullable<typeof pendingDrag>) {
   const bill = activeBill.value;
   if (!bill) return;
   pendingDrag = undefined;
+  clearTimeout(dragHoldTimer);
   dragElement = pending.element;
   dragPanel = pending.panel;
   dragGrabY = pending.startY - dragElement.getBoundingClientRect().top;
@@ -692,10 +710,6 @@ function activateDrag(pending: NonNullable<typeof pendingDrag>) {
     groupIds: new Map(bill.items.map((item) => [item.id, item.groupId ?? ""])),
   };
   drag.value = { kind: pending.kind, id: pending.id, pointerId: pending.pointerId };
-  if (pending.kind === "group") {
-    collapsedBeforeGroupDrag = new Set(collapsedGroups.value);
-    collapsedGroups.value = new Set(itemSections.value.map((section) => section.id));
-  }
   navigator.vibrate?.(12);
   nextTick(() => {
     positionDragElement();
@@ -843,6 +857,7 @@ function scrollDuringDrag() {
 }
 
 function resetDragState() {
+  clearTimeout(dragHoldTimer);
   cancelAnimationFrame(dragFrame);
   dragPanel?.querySelectorAll<HTMLElement>("[data-item-id], [data-group-id]").forEach((element) => {
     element.style.transition = "";
@@ -854,10 +869,6 @@ function resetDragState() {
   dragSnapshot = undefined;
   drag.value = undefined;
   dragHoverGroupId.value = "";
-  if (collapsedBeforeGroupDrag) {
-    collapsedGroups.value = collapsedBeforeGroupDrag;
-    collapsedBeforeGroupDrag = undefined;
-  }
 }
 
 function cancelDrag(event?: PointerEvent) {
@@ -1941,7 +1952,7 @@ onUnmounted(() => {
 }
 
 .drag-handle {
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
