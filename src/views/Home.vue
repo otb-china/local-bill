@@ -33,23 +33,38 @@
 
     <main v-if="!activeBill" class="bill-list-view">
       <section v-if="visibleBills.length" class="bill-list">
-        <button
+        <van-swipe-cell
           v-for="bill in visibleBills"
           :key="bill.id"
-          class="bill-card"
-          type="button"
-          @click="openBill(bill.id)"
+          class="bill-swipe"
+          @open="swipedBillId = bill.id"
+          @close="swipedBillId === bill.id && (swipedBillId = '')"
+          @click="$event === 'cell' && swipedBillId !== bill.id && openBill(bill.id)"
         >
-          <span class="bill-card-info">
-            <span class="bill-card-name">{{ bill.name }}</span>
-            <span v-if="bill.subtitle" class="bill-card-subtitle">{{ bill.subtitle }}</span>
-          </span>
-          <strong class="bill-card-amount">¥{{ formatMoney(billTotal(bill)) }}</strong>
-          <small class="bill-card-meta">
-            <span>累计 {{ bill.items.length }} 项</span>
-            <time v-if="getBillLatestCreatedDate(bill)">{{ getBillLatestCreatedDate(bill) }}</time>
-          </small>
-        </button>
+          <button class="bill-card" type="button">
+            <span class="bill-card-info">
+              <span class="bill-card-name">{{ bill.name }}</span>
+              <span v-if="bill.subtitle" class="bill-card-subtitle">{{ bill.subtitle }}</span>
+            </span>
+            <strong class="bill-card-amount">¥{{ formatMoney(billTotal(bill)) }}</strong>
+            <small class="bill-card-meta">
+              <span>累计 {{ bill.items.length }} 项</span>
+              <time v-if="getBillLatestCreatedDate(bill)">{{ getBillLatestCreatedDate(bill) }}</time>
+            </small>
+          </button>
+          <template #right>
+            <button
+              class="swipe-action danger"
+              type="button"
+              :aria-label="`删除账单 ${bill.name || '未命名账单'}`"
+              :tabindex="swipedBillId === bill.id ? 0 : -1"
+              @click="removeBill(bill.id)"
+            >
+              <el-icon><Delete /></el-icon>
+              <span>删除</span>
+            </button>
+          </template>
+        </van-swipe-cell>
       </section>
 
       <div v-else-if="!bills.length" class="empty-state">
@@ -89,10 +104,6 @@
           <button class="text-action" type="button" @click="copyActiveBill">
             <el-icon><CopyDocument /></el-icon>
             <span>复制账单</span>
-          </button>
-          <button class="text-action danger" type="button" @click="removeActiveBill">
-            <el-icon><Delete /></el-icon>
-            <span>删除账单</span>
           </button>
         </div>
       </section>
@@ -369,6 +380,7 @@ const itemTimeTap = ref({
 });
 const bills = ref<Bill[]>([]);
 const billSearch = ref("");
+const swipedBillId = ref("");
 const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
 let billListScrollY = 0;
@@ -445,6 +457,11 @@ const {
 
 watch(bills, saveBills, { deep: true });
 watch(deletedBills, saveDeletedBills, { deep: true });
+watch(visibleBills, (list) => {
+  if (swipedBillId.value && !list.some((bill) => bill.id === swipedBillId.value)) {
+    swipedBillId.value = "";
+  }
+});
 watch(() => activeBill.value?.id, async (billId, previousBillId) => {
   cancelDrag();
   collapsedGroups.value.clear();
@@ -522,6 +539,7 @@ function copyActiveBill() {
 }
 
 function openBill(id: string) {
+  swipedBillId.value = "";
   activeBillId.value = id;
 }
 
@@ -908,22 +926,23 @@ function toPickerValues(value: string) {
   };
 }
 
-function removeActiveBill() {
-  if (!activeBill.value) return;
-  const currentBill = activeBill.value;
+function removeBill(id: string) {
+  const currentBill = bills.value.find((bill) => bill.id === id);
+  if (!currentBill) return;
   const billName = currentBill.name || "未命名账单";
   showConfirmDialog({
     title: "删除账单",
     message: `确认将「${billName}」移入回收站吗？一周内可恢复。`,
     width: "260px",
   }).then(() => {
+    const bill = bills.value.find((item) => item.id === id);
+    if (!bill) return;
     const deletedBill = {
-      ...currentBill,
+      ...bill,
       deletedAt: new Date().toISOString(),
     };
-    deletedBills.value = [deletedBill, ...deletedBills.value.filter((bill) => bill.id !== deletedBill.id)];
-    bills.value = bills.value.filter((bill) => bill.id !== activeBillId.value);
-    activeBillId.value = "";
+    deletedBills.value = [deletedBill, ...deletedBills.value.filter((item) => item.id !== id)];
+    bills.value = bills.value.filter((item) => item.id !== id);
     showToast("账单已移入回收站");
   }).catch(() => {
   });
@@ -942,17 +961,22 @@ async function shareBillImage() {
 }
 
 function createBillImage(bill: Bill) {
-  const items = bill.itemMode === "group"
-    ? getBillGroups(bill).flatMap((section) => section.items)
-    : sortItemsByCreatedAt(bill.items);
-  const validItems = getValidItems(items);
+  const isGrouped = bill.itemMode === "group";
+  const sections = isGrouped
+    ? getBillGroups(bill)
+      .map(({ name, items }) => ({ name, items: getValidItems(items) }))
+      .filter(({ items }) => items.length > 0)
+    : [{ name: "", items: getValidItems(sortItemsByCreatedAt(bill.items)) }];
+  const itemCount = sections.reduce((count, section) => count + section.items.length, 0);
   const width = 900;
   const rowHeight = 64;
+  const groupHeaderHeight = 48;
   const listStartY = 256;
   const rowBottomOffset = 10;
   const footerGap = 50;
   const footerBottomSpace = 84;
-  const listHeight = validItems.length ? (validItems.length - 1) * rowHeight + rowBottomOffset : 0;
+  const rowsHeight = itemCount ? (itemCount - 1) * rowHeight + rowBottomOffset : 0;
+  const listHeight = rowsHeight + (isGrouped ? sections.length * groupHeaderHeight : 0);
   const footerY = listStartY + listHeight + footerGap;
   const height = Math.max(560, footerY + footerBottomSpace);
   const canvas = document.createElement("canvas");
@@ -979,7 +1003,7 @@ function createBillImage(bill: Bill) {
   if (bill.subtitle) {
     ctx.fillText(bill.subtitle, 88, 164);
   }
-  ctx.fillText(`${validItems.length} 项`, 88, bill.subtitle ? 200 : 164);
+  ctx.fillText(`${itemCount} 项`, 88, bill.subtitle ? 200 : 164);
 
   ctx.fillStyle = "#1f6b7b";
   ctx.font = "700 44px Arial, sans-serif";
@@ -988,20 +1012,29 @@ function createBillImage(bill: Bill) {
   ctx.textAlign = "left";
 
   let y = listStartY;
-  validItems.forEach((item, index) => {
-    ctx.fillStyle = index % 2 === 0 ? "#f7f9fc" : "#ffffff";
-    roundRect(ctx, 88, y - 42, width - 176, 52, 10);
-    ctx.fill();
-    ctx.fillStyle = "#203747";
-    ctx.font = "24px Arial, sans-serif";
-    ctx.fillText(item.name || "未命名子项", 112, y - 8);
-    ctx.fillStyle = "#1f6b7b";
-    ctx.font = "700 24px Arial, sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(`¥${formatMoney(Number(item.price || 0))}`, width - 112, y - 8);
-    ctx.textAlign = "left";
-    y += rowHeight;
-  });
+  for (const section of sections) {
+    if (isGrouped) {
+      ctx.fillStyle = "#203747";
+      ctx.font = "700 26px Arial, sans-serif";
+      ctx.fillText(section.name, 88, y - 10, width - 176);
+      y += groupHeaderHeight;
+    }
+
+    section.items.forEach((item, index) => {
+      ctx.fillStyle = index % 2 === 0 ? "#f7f9fc" : "#ffffff";
+      roundRect(ctx, 88, y - 42, width - 176, 52, 10);
+      ctx.fill();
+      ctx.fillStyle = "#203747";
+      ctx.font = "24px Arial, sans-serif";
+      ctx.fillText(item.name || "未命名子项", 112, y - 8);
+      ctx.fillStyle = "#1f6b7b";
+      ctx.font = "700 24px Arial, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(`¥${formatMoney(Number(item.price || 0))}`, width - 112, y - 8);
+      ctx.textAlign = "left";
+      y += rowHeight;
+    });
+  }
 
   ctx.fillStyle = "#72808c";
   ctx.font = "18px Arial, sans-serif";
@@ -1179,8 +1212,7 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
-.icon-button.danger,
-.text-action.danger {
+.icon-button.danger {
   background: var(--danger-bg);
   color: var(--danger-text);
 }
@@ -1212,8 +1244,14 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.bill-swipe {
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
 .bill-card {
   display: grid;
+  width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 6px 12px;
@@ -1221,13 +1259,12 @@ onUnmounted(() => {
   border: 0;
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: var(--shadow);
   text-align: left;
 }
 
 .bill-card:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .bill-card:active {
