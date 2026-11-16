@@ -106,6 +106,7 @@ const onFileChange = async (event: Event) => {
   margin: 0 0 4px;
   color: var(--text-muted);
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -120,11 +121,18 @@ const onFileChange = async (event: Event) => {
   gap: 12px;
   width: 100%;
   margin-top: 14px;
-  padding: 14px;
-  border: 1px dashed var(--divider);
-  border-radius: 12px;
+  padding: 16px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 35%, var(--divider));
+  border-radius: 16px;
   background: var(--surface-soft);
   text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.file-upload-card:hover {
+  border-color: var(--accent);
+  background: var(--header-icon-bg);
 }
 
 .file-upload-card > span:last-child {
@@ -158,10 +166,11 @@ const onFileChange = async (event: Event) => {
   justify-content: space-between;
   gap: 12px;
   margin: 14px 0 12px;
-  padding: 14px;
-  border-radius: 10px;
+  padding: 16px;
+  border-radius: 16px;
   background: var(--stat-income-bg);
   color: #ffffff;
+  box-shadow: var(--submit-btn-shadow);
 }
 
 .import-export-card strong,

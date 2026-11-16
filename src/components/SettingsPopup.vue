@@ -107,7 +107,8 @@ const popupShow = computed({
 .theme-panel {
   margin-top: 16px;
   padding: 14px;
-  border-radius: 12px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
   background: var(--surface-soft);
 }
 
@@ -126,6 +127,9 @@ const popupShow = computed({
 .theme-panel-head span {
   flex: 0 0 auto;
   color: var(--accent);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--header-icon-bg);
   font-size: 12px;
   font-weight: 700;
 }
@@ -141,22 +145,29 @@ const popupShow = computed({
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  padding: 10px 8px;
+  border: 1.5px solid transparent;
+  border-radius: 14px;
   background: var(--surface);
   text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+}
+
+.theme-option:active {
+  transform: scale(0.97);
 }
 
 .theme-option.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-ring);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .theme-swatch {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
 }
@@ -192,10 +203,20 @@ const popupShow = computed({
 
 .settings-item {
   padding: 14px 16px;
-  border: 0;
-  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--divider) 70%, transparent);
+  border-radius: 16px;
   background: var(--surface-soft);
   text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.18s ease;
+}
+
+.settings-item:hover {
+  box-shadow: var(--shadow);
+}
+
+.settings-item:active {
+  transform: scale(0.98);
 }
 
 .settings-item-feature {

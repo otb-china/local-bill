@@ -1,17 +1,29 @@
 <template>
   <div class="home-page" :style="themeStyle">
-    <header class="page-header">
+    <header v-if="activeBill" class="page-header detail-header">
+      <button class="header-icon" type="button" aria-label="返回账单列表" @click="closeBill">
+        <el-icon><Back /></el-icon>
+      </button>
+      <h1>账单明细</h1>
+      <button
+        class="header-icon"
+        :class="{ 'is-hidden': !showScrollTop }"
+        type="button"
+        aria-label="回到顶部"
+        :tabindex="showScrollTop ? 0 : -1"
+        @click="scrollToTop"
+      >
+        <el-icon><Top /></el-icon>
+      </button>
+    </header>
+    <header v-else class="page-header">
       <div>
-        <p v-if="activeBill" class="hero-tag">Local Bill</p>
         <div class="header-title">
-          <h1>{{ activeBill ? "账单明细" : "本地账单" }}</h1>
-          <span v-if="!activeBill" class="header-bill-count">{{ bills.length }} 个账单</span>
+          <h1>本地账单</h1>
+          <span class="header-bill-count">{{ bills.length }} 个账单</span>
         </div>
       </div>
       <div class="header-actions">
-        <button v-if="activeBill" class="header-icon" type="button" aria-label="返回账单列表" @click="closeBill">
-          <el-icon><Back /></el-icon>
-        </button>
         <button v-if="showScrollTop" class="header-icon" type="button" aria-label="回到顶部" @click="scrollToTop">
           <el-icon><Top /></el-icon>
         </button>
@@ -19,7 +31,7 @@
           <el-icon><Setting /></el-icon>
         </button>
       </div>
-      <div v-if="!activeBill" class="bill-toolbar">
+      <div class="bill-toolbar">
         <label class="bill-search">
           <el-icon aria-hidden="true"><Search /></el-icon>
           <input v-model="billSearch" type="search" aria-label="搜索账单" placeholder="搜索账单" @keydown.esc="billSearch = ''" />
@@ -80,7 +92,7 @@
     <main v-else class="bill-detail-view">
       <section class="bill-editor">
         <div class="bill-editor-header">
-          <label for="bill-name">BILL NAME</label>
+          <input id="bill-name" v-model.trim="activeBill.name" class="text-input title-input" aria-label="账单名" placeholder="账单名" @input="touchActiveBill" />
           <div class="detail-actions">
             <button class="icon-button" type="button" aria-label="生成明细图片" title="生成明细图片" @click="shareBillImage">
               <el-icon aria-hidden="true"><Share /></el-icon>
@@ -93,7 +105,6 @@
 
         <div class="detail-summary">
           <div class="bill-title-fields">
-            <input id="bill-name" v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
             <input v-model.trim="activeBill.subtitle" class="text-input subtitle-input" aria-label="副标题" placeholder="副标题" @input="touchActiveBill" />
           </div>
 
@@ -108,21 +119,17 @@
       <section
         class="items-panel"
         :key="activeBill.id"
+        :class="{ 'is-dragging': drag }"
         @pointermove="moveDrag"
         @pointerup="finishDrag"
+        @pointercancel="cancelDrag"
         @lostpointercapture="cancelDrag"
-        @touchend="finishTouchDrag"
-        @touchcancel="cancelTouchDrag"
       >
         <div class="section-row">
-          <p class="section-tag">Items</p>
           <div class="item-mode" role="group" aria-label="子项显示模式">
             <button type="button" :aria-pressed="!groupMode" @click="setItemMode('date')">日期</button>
             <button type="button" :aria-pressed="groupMode" @click="setItemMode('group')">分组</button>
           </div>
-        </div>
-
-        <div class="item-list">
           <button v-if="groupMode" class="add-item-row" type="button" @click="addGroup">
             <el-icon><Plus /></el-icon>
             <span>新增分组</span>
@@ -131,7 +138,9 @@
             <el-icon><Plus /></el-icon>
             <span>新增子项</span>
           </button>
+        </div>
 
+        <div class="item-list">
           <div
             v-for="section in itemSections"
             :key="section.id"
@@ -139,20 +148,20 @@
             :class="{
               'item-group': groupMode,
               'drag-source': drag?.kind === 'group' && drag.id === section.id,
-              'drop-group': drag?.kind === 'item' && drag.target?.groupId === section.id && !drag.target.itemId,
+              'drop-group': drag?.kind === 'item' && dragHoverGroupId === section.id,
             }"
             :data-group-id="groupMode ? section.id : undefined"
-            :data-drop-side="drag?.kind === 'group' && drag.target?.groupId === section.id ? drag.target.side : undefined"
           >
             <div v-if="groupMode" class="item-group-header">
               <button
-                v-if="allGroupsCollapsed"
+                v-if="itemSections.length > 1"
                 class="drag-handle"
                 type="button"
                 aria-label="拖动分组"
+                title="按住拖动排序"
                 @pointerdown="startDrag($event, 'group', section.id)"
-                @touchstart.stop="prepareTouchDrag($event, 'group', section.id)"
-                @touchmove.stop="moveTouchDrag"
+                @touchstart.stop
+                @touchmove.stop
                 @contextmenu.prevent
               >⠿</button>
               <input
@@ -172,29 +181,13 @@
                 :aria-expanded="!collapsedGroups.has(section.id)"
                 @click="toggleGroup(section.id)"
               >
-                <el-icon><ArrowRight v-if="collapsedGroups.has(section.id)" /><ArrowDown v-else /></el-icon>
-                <strong>{{ section.name }}</strong>
-                <span class="group-count">{{ section.items.length }} 项</span>
+                <span class="group-title">
+                  <strong>{{ section.name }}</strong>
+                  <span class="group-count">{{ section.items.length }} 项</span>
+                </span>
+                <strong class="group-total" title="分组合计">¥{{ formatMoney(sumBillItems(getValidItems(section.items))) }}</strong>
+                <el-icon class="group-chevron"><ArrowDown /></el-icon>
               </button>
-              <strong class="group-total" title="分组合计">¥{{ formatMoney(sumBillItems(getValidItems(section.items))) }}</strong>
-              <button
-                class="group-action"
-                type="button"
-                aria-label="编辑分组名称"
-                title="编辑分组名称"
-                @click="groupNameEdit = { id: section.id, name: section.name }"
-              ><el-icon><Edit /></el-icon></button>
-              <button class="group-action" type="button" aria-label="新增子项" title="新增子项" @click="addItem(section.id)">
-                <el-icon><Plus /></el-icon>
-              </button>
-              <button
-                v-if="itemSections.length > 1 && !section.items.length"
-                class="group-action"
-                type="button"
-                aria-label="删除分组"
-                title="删除分组"
-                @click="removeGroup(section.id)"
-              ><el-icon><Delete /></el-icon></button>
             </div>
             <van-swipe-cell
               v-for="item in groupMode && collapsedGroups.has(section.id) ? [] : section.items"
@@ -202,7 +195,6 @@
               class="item-swipe"
               :data-item-id="groupMode ? item.id : undefined"
               :class="{ 'drag-source': drag?.kind === 'item' && drag.id === item.id }"
-              :data-drop-side="drag?.kind === 'item' && drag.target?.itemId === item.id ? drag.target.side : undefined"
             >
               <div class="item-row" :class="{ 'has-created-at': !groupMode && item.createdAt, 'grouped-item': groupMode, voided: item.voided }">
                 <button
@@ -210,13 +202,14 @@
                   class="drag-handle item-drag-handle"
                   type="button"
                   aria-label="拖动子项"
+                  title="按住拖动排序"
                   @pointerdown="startDrag($event, 'item', item.id)"
-                  @touchstart.stop="prepareTouchDrag($event, 'item', item.id)"
-                  @touchmove.stop="moveTouchDrag"
+                  @touchstart.stop
+                  @touchmove.stop
                   @contextmenu.prevent
                 >⠿</button>
                 <label class="item-field item-name-field">
-                  <input v-model.trim="item.name" class="text-input" aria-label="名称" @input="touchActiveBill" />
+                  <input v-model.trim="item.name" class="text-input" aria-label="名称" placeholder="名称" @input="touchActiveBill" />
                 </label>
                 <label class="item-field item-price-field">
                   <input
@@ -254,6 +247,27 @@
                 </button>
               </template>
             </van-swipe-cell>
+            <div v-if="groupMode && !collapsedGroups.has(section.id)" class="item-group-footer">
+              <button class="group-add" type="button" @click="addItem(section.id)">
+                <el-icon><Plus /></el-icon>
+                <span>添加子项</span>
+              </button>
+              <button
+                class="group-action"
+                type="button"
+                aria-label="编辑分组名称"
+                title="编辑分组名称"
+                @click="groupNameEdit = { id: section.id, name: section.name }"
+              ><el-icon><Edit /></el-icon></button>
+              <button
+                v-if="itemSections.length > 1 && !section.items.length"
+                class="group-action danger"
+                type="button"
+                aria-label="删除分组"
+                title="删除分组"
+                @click="removeGroup(section.id)"
+              ><el-icon><Delete /></el-icon></button>
+            </div>
           </div>
         </div>
       </section>
@@ -357,7 +371,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { ArrowDown, ArrowRight, Back, CircleClose, Clock, CopyDocument, Delete, Edit, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
+import { ArrowDown, Back, CircleClose, Clock, CopyDocument, Delete, Edit, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -378,8 +392,8 @@ import type { Bill, BillItem, DeletedBill } from "@/types/bill";
 
 const DATE_FORMAT = "YYYY-MM-DD";
 const SCROLL_TOP_THRESHOLD = 240;
-const DRAG_HOLD_MS = 320;
-const DRAG_MOVE_THRESHOLD = 8;
+const DRAG_MOVE_THRESHOLD = 4;
+const DRAG_SCROLL_EDGE = 80;
 const RECYCLE_KEEP_DAYS = 7;
 const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
 
@@ -437,17 +451,23 @@ const vFocus = {
     input.select();
   },
 };
-type DropTarget = { groupId: string; itemId?: string; side: "before" | "after" };
 type DragSource = {
   kind: "group" | "item";
   id: string;
   pointerId: number;
 };
-const drag = ref<DragSource & { target?: DropTarget }>();
-let pendingTouchDrag: (DragSource & { startX: number; startY: number; startedAt: number }) | undefined;
+const drag = ref<DragSource>();
+const dragHoverGroupId = ref("");
+let dragSnapshot: { groups: Bill["groups"]; items: BillItem[]; groupIds: Map<string, string> } | undefined;
+let dragChanged = false;
+let pendingDrag: (DragSource & { startX: number; startY: number; element: HTMLElement; panel: HTMLElement }) | undefined;
+let dragElement: HTMLElement | undefined;
+let dragPanel: HTMLElement | undefined;
+let collapsedBeforeGroupDrag: Set<string> | undefined;
 let dragFrame = 0;
-let dragX = 0;
 let dragY = 0;
+let dragGrabY = 0;
+let dragOffsetY = 0;
 
 const itemSections = computed(() => {
   const bill = activeBill.value;
@@ -455,9 +475,6 @@ const itemSections = computed(() => {
   if (!groupMode.value) return [{ id: "", name: "", items: sortItemsByCreatedAt(bill.items) }];
   return getBillGroups(bill);
 });
-const allGroupsCollapsed = computed(() =>
-  groupMode.value && itemSections.value.every((section) => collapsedGroups.value.has(section.id)),
-);
 
 const {
   importExportInfo,
@@ -636,149 +653,242 @@ function removeGroup(id: string) {
 }
 
 function startDrag(event: PointerEvent, kind: "group" | "item", id: string) {
-  if (event.pointerType === "touch" || event.button !== 0 || drag.value || !groupMode.value) return;
-  if (kind === "group" && !allGroupsCollapsed.value) return;
-  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  activateDrag({ kind, id, pointerId: event.pointerId }, event);
-}
-
-function prepareTouchDrag(event: TouchEvent, kind: "group" | "item", id: string) {
-  if (event.touches.length !== 1) {
-    cancelTouchDrag();
-    return;
-  }
-  if (drag.value || !groupMode.value || (kind === "group" && !allGroupsCollapsed.value)) return;
-  const touch = event.changedTouches[0];
-  pendingTouchDrag = {
-    kind,
-    id,
-    pointerId: touch.identifier,
-    startX: touch.clientX,
-    startY: touch.clientY,
-    startedAt: event.timeStamp,
-  };
-}
-
-function moveTouchDrag(event: TouchEvent) {
-  const pending = pendingTouchDrag;
-  if (!pending) return;
-  if (event.touches.length !== 1 || !event.cancelable) {
-    cancelTouchDrag();
-    return;
-  }
-  const touch = event.touches[0];
-  if (touch.identifier !== pending.pointerId) return;
-  if (!drag.value) {
-    const distance = Math.hypot(touch.clientX - pending.startX, touch.clientY - pending.startY);
-    if (distance < DRAG_MOVE_THRESHOLD) return;
-    if (event.timeStamp - pending.startedAt < DRAG_HOLD_MS) {
-      cancelTouchDrag();
-      return;
-    }
-    activateDrag({ kind: pending.kind, id: pending.id, pointerId: pending.pointerId }, touch);
-  }
+  if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+  if (drag.value || pendingDrag || !groupMode.value) return;
+  const handle = event.currentTarget as HTMLElement;
+  const element = handle.closest<HTMLElement>(kind === "group" ? "[data-group-id]" : "[data-item-id]");
+  const panel = handle.closest<HTMLElement>(".items-panel");
+  if (!element || !panel) return;
   event.preventDefault();
-  trackDrag(touch);
-}
-
-function finishTouchDrag(event: TouchEvent) {
-  const pending = pendingTouchDrag;
-  if (!pending) return;
-  const touch = Array.from(event.changedTouches).find((entry) => entry.identifier === pending.pointerId);
-  if (!touch) return;
-  if (drag.value) dropDrag(touch);
-  else cancelTouchDrag();
-}
-
-function cancelTouchDrag() {
-  if (pendingTouchDrag) cancelDrag();
-}
-
-function activateDrag(source: DragSource, position: { clientX: number; clientY: number }) {
-  drag.value = source;
-  dragX = position.clientX;
-  dragY = position.clientY;
-  dragFrame = requestAnimationFrame(scrollDuringDrag);
+  panel.setPointerCapture(event.pointerId);
+  pendingDrag = { kind, id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, element, panel };
 }
 
 function moveDrag(event: PointerEvent) {
-  if (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId) return;
+  const pending = pendingDrag;
+  if (!drag.value && pending?.pointerId === event.pointerId) {
+    const distance = Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY);
+    if (distance < DRAG_MOVE_THRESHOLD) return;
+    activateDrag(pending);
+  }
+  if (drag.value?.pointerId !== event.pointerId) return;
+  event.preventDefault();
   trackDrag(event);
 }
 
-function trackDrag(position: { clientX: number; clientY: number }) {
-  dragX = position.clientX;
-  dragY = position.clientY;
-  updateDropTarget();
+function activateDrag(pending: NonNullable<typeof pendingDrag>) {
+  const bill = activeBill.value;
+  if (!bill) return;
+  pendingDrag = undefined;
+  dragElement = pending.element;
+  dragPanel = pending.panel;
+  dragGrabY = pending.startY - dragElement.getBoundingClientRect().top;
+  dragOffsetY = 0;
+  dragY = pending.startY;
+  dragChanged = false;
+  dragSnapshot = {
+    groups: [...bill.groups],
+    items: [...bill.items],
+    groupIds: new Map(bill.items.map((item) => [item.id, item.groupId ?? ""])),
+  };
+  drag.value = { kind: pending.kind, id: pending.id, pointerId: pending.pointerId };
+  if (pending.kind === "group") {
+    collapsedBeforeGroupDrag = new Set(collapsedGroups.value);
+    collapsedGroups.value = new Set(itemSections.value.map((section) => section.id));
+  }
+  navigator.vibrate?.(12);
+  nextTick(() => {
+    positionDragElement();
+    updateDragOrder();
+  });
+  dragFrame = requestAnimationFrame(scrollDuringDrag);
 }
 
-function updateDropTarget() {
+function trackDrag(position: { clientX: number; clientY: number }) {
+  dragY = position.clientY;
+  positionDragElement();
+  updateDragOrder();
+}
+
+function resolveDragElement() {
   const current = drag.value;
-  if (!current) return;
-  const element = document.elementFromPoint(dragX, dragY);
-  const group = element?.closest<HTMLElement>("[data-group-id]");
-  const groupId = group?.dataset.groupId;
-  const item = current.kind === "item" ? element?.closest<HTMLElement>("[data-item-id]") : undefined;
-  const itemId = item?.dataset.itemId;
-  current.target = undefined;
-  if (!group || groupId === undefined) return;
-  if (current.kind === "group" && groupId === current.id) return;
-  if (itemId === current.id) return;
-  const rect = (item ?? group).getBoundingClientRect();
-  current.target = { groupId, itemId, side: dragY < rect.top + rect.height / 2 ? "before" : "after" };
+  if (!current || !dragPanel || dragElement?.isConnected) return;
+  const attribute = current.kind === "group" ? "data-group-id" : "data-item-id";
+  dragElement = dragPanel.querySelector<HTMLElement>(`[${attribute}="${current.id}"]`) ?? undefined;
+}
+
+function translateY(element: HTMLElement) {
+  return new DOMMatrixReadOnly(getComputedStyle(element).transform).m42;
+}
+
+function positionDragElement() {
+  resolveDragElement();
+  if (!dragElement) return;
+  dragElement.style.transition = "none";
+  const layoutTop = dragElement.getBoundingClientRect().top - translateY(dragElement);
+  dragOffsetY = dragY - dragGrabY - layoutTop;
+  dragElement.style.transform = `translate3d(0, ${dragOffsetY}px, 0)`;
+}
+
+function layoutRect(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  const shift = translateY(element);
+  return { top: rect.top - shift, bottom: rect.bottom - shift };
+}
+
+function distanceToGroup(element: HTMLElement) {
+  const rect = layoutRect(element);
+  if (dragY < rect.top) return rect.top - dragY;
+  if (dragY > rect.bottom) return dragY - rect.bottom;
+  return 0;
+}
+
+function countBefore(elements: HTMLElement[]) {
+  return elements.filter((element) => {
+    const rect = layoutRect(element);
+    return dragY > (rect.top + rect.bottom) / 2;
+  }).length;
+}
+
+function updateDragOrder() {
+  const current = drag.value;
+  const bill = activeBill.value;
+  if (!current || !bill || !dragPanel) return;
+  const groupElements = Array.from(dragPanel.querySelectorAll<HTMLElement>("[data-group-id]"));
+
+  if (current.kind === "group") {
+    const others = groupElements.filter((element) => element.dataset.groupId !== current.id);
+    const index = countBefore(others);
+    const rest = bill.groups.filter((group) => group.id !== current.id);
+    const moving = bill.groups.find((group) => group.id === current.id);
+    if (!moving) return;
+    const next = [...rest.slice(0, index), moving, ...rest.slice(index)];
+    if (next.every((group, position) => group === bill.groups[position])) return;
+    animateReorder(() => {
+      bill.groups = next;
+    });
+    return;
+  }
+
+  const groupElement = groupElements.reduce<HTMLElement | undefined>((nearest, element) => {
+    if (!nearest) return element;
+    return distanceToGroup(element) < distanceToGroup(nearest) ? element : nearest;
+  }, undefined);
+  const groupId = groupElement?.dataset.groupId;
+  if (!groupElement || groupId === undefined) return;
+  dragHoverGroupId.value = groupId;
+  const siblings = Array.from(groupElement.querySelectorAll<HTMLElement>("[data-item-id]"))
+    .filter((element) => element.dataset.itemId !== current.id);
+  const index = countBefore(siblings);
+  const moving = bill.items.find((item) => item.id === current.id);
+  if (!moving) return;
+  const rest = bill.items.filter((item) => item !== moving);
+  const anchorId = siblings[index]?.dataset.itemId;
+  const previousId = siblings[index - 1]?.dataset.itemId;
+  let insertAt = rest.length;
+  if (anchorId) insertAt = rest.findIndex((item) => item.id === anchorId);
+  else if (previousId) insertAt = rest.findIndex((item) => item.id === previousId) + 1;
+  else {
+    const lastInGroup = rest.map((item) => item.groupId).lastIndexOf(groupId);
+    if (lastInGroup !== -1) insertAt = lastInGroup + 1;
+  }
+  const next = [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)];
+  const sameOrder = next.every((item, position) => item === bill.items[position]);
+  if (sameOrder && moving.groupId === groupId) return;
+  animateReorder(() => {
+    moving.groupId = groupId;
+    bill.items = next;
+  });
+}
+
+function animateReorder(mutate: () => void) {
+  const panel = dragPanel;
+  if (!panel) return;
+  const selector = drag.value?.kind === "group" ? "[data-group-id]" : "[data-item-id], [data-group-id]";
+  const before = new Map(
+    Array.from(panel.querySelectorAll<HTMLElement>(selector))
+      .filter((element) => element !== dragElement)
+      .map((element) => [element, element.getBoundingClientRect().top]),
+  );
+  mutate();
+  dragChanged = true;
+  nextTick(() => {
+    positionDragElement();
+    before.forEach((top, element) => {
+      if (!element.isConnected) return;
+      element.style.transition = "none";
+      element.style.transform = "";
+      const delta = top - element.getBoundingClientRect().top;
+      if (!delta) return;
+      element.style.transform = `translate3d(0, ${delta}px, 0)`;
+      requestAnimationFrame(() => {
+        element.style.transition = "transform 0.2s cubic-bezier(0.2, 0, 0, 1)";
+        element.style.transform = "";
+      });
+    });
+  });
 }
 
 function scrollDuringDrag() {
-  const edge = 72;
   const distanceFromBottom = window.innerHeight - dragY;
-  const speed = dragY < edge ? -(edge - dragY) : Math.max(0, edge - distanceFromBottom);
+  const speed = dragY < DRAG_SCROLL_EDGE
+    ? -(DRAG_SCROLL_EDGE - dragY)
+    : Math.max(0, DRAG_SCROLL_EDGE - distanceFromBottom);
   if (speed) {
-    window.scrollBy(0, speed / 5);
-    updateDropTarget();
+    window.scrollBy(0, speed / 4);
+    positionDragElement();
+    updateDragOrder();
   }
   dragFrame = requestAnimationFrame(scrollDuringDrag);
 }
 
-function cancelDrag(event?: PointerEvent) {
-  if (event && (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId)) return;
+function resetDragState() {
   cancelAnimationFrame(dragFrame);
+  dragPanel?.querySelectorAll<HTMLElement>("[data-item-id], [data-group-id]").forEach((element) => {
+    element.style.transition = "";
+    element.style.transform = "";
+  });
+  dragElement = undefined;
+  dragPanel = undefined;
+  pendingDrag = undefined;
+  dragSnapshot = undefined;
   drag.value = undefined;
-  pendingTouchDrag = undefined;
+  dragHoverGroupId.value = "";
+  if (collapsedBeforeGroupDrag) {
+    collapsedGroups.value = collapsedBeforeGroupDrag;
+    collapsedBeforeGroupDrag = undefined;
+  }
+}
+
+function cancelDrag(event?: PointerEvent) {
+  const pointerId = drag.value?.pointerId ?? pendingDrag?.pointerId;
+  if (event && event.pointerId !== pointerId) return;
+  if (event?.type === "lostpointercapture" && drag.value && dragPanel?.isConnected) return;
+  const bill = activeBill.value;
+  if (drag.value && dragSnapshot && bill && dragChanged) {
+    const snapshot = dragSnapshot;
+    snapshot.items.forEach((item) => {
+      const original = snapshot.groupIds.get(item.id);
+      if (original !== undefined) item.groupId = original || undefined;
+    });
+    bill.groups = snapshot.groups;
+    bill.items = snapshot.items;
+  }
+  resetDragState();
 }
 
 function finishDrag(event: PointerEvent) {
-  if (event.pointerType === "touch" || drag.value?.pointerId !== event.pointerId) return;
-  dropDrag(event);
-}
-
-function dropDrag(position: { clientX: number; clientY: number }) {
-  const current = drag.value;
-  if (!current) return;
-  trackDrag(position);
-  cancelDrag();
-  const bill = activeBill.value;
-  const target = current.target;
-  if (!bill || !target) return;
-
-  if (current.kind === "group") {
-    if (!allGroupsCollapsed.value) return;
-    const groups = bill.groups;
-    const from = groups.findIndex((group) => group.id === current.id);
-    if (from === -1) return;
-    const [group] = groups.splice(from, 1);
-    const to = groups.findIndex((entry) => entry.id === target.groupId);
-    groups.splice(to + Number(target.side === "after"), 0, group);
-  } else {
-    const from = bill.items.findIndex((item) => item.id === current.id);
-    if (from === -1) return;
-    const [item] = bill.items.splice(from, 1);
-    item.groupId = target.groupId;
-    const to = bill.items.findIndex((entry) => entry.id === target.itemId);
-    if (to === -1) bill.items.push(item);
-    else bill.items.splice(to + Number(target.side === "after"), 0, item);
+  if (pendingDrag?.pointerId === event.pointerId) {
+    resetDragState();
+    return;
   }
-  touchActiveBill();
+  if (drag.value?.pointerId !== event.pointerId) return;
+  trackDrag(event);
+  const changed = dragChanged;
+  resetDragState();
+  if (changed) touchActiveBill();
 }
+
 
 function addItem(groupId?: string) {
   const bill = activeBill.value;
@@ -1112,9 +1222,22 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .home-page {
   min-height: 100vh;
-  padding: 12px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--page-bg);
   color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-page button {
+  font-family: inherit;
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease, opacity 0.18s ease;
+}
+
+.home-page button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .home-page,
@@ -1136,11 +1259,40 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  margin: -12px -12px 12px;
-  padding: 18px max(18px, calc((100vw - 780px) / 2 + 18px)) 16px;
-  background: var(--surface);
-  box-shadow: var(--header-shadow);
-  backdrop-filter: blur(12px);
+  margin: -12px -12px 14px;
+  padding: calc(16px + env(safe-area-inset-top)) max(18px, calc((100vw - 780px) / 2 + 18px)) 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--divider) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: none;
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+}
+
+.detail-header {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  padding-bottom: 10px;
+}
+
+.page-header.detail-header h1 {
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.detail-header .header-icon {
+  background: transparent;
+}
+
+.detail-header .header-icon:hover {
+  background: var(--header-icon-bg);
+}
+
+.detail-header .header-icon.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .hero-tag,
@@ -1148,6 +1300,7 @@ onUnmounted(() => {
   margin: 0 0 4px;
   color: var(--text-muted);
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -1162,8 +1315,10 @@ onUnmounted(() => {
 .page-header h1 {
   margin: 0;
   color: var(--text-strong);
-  font-size: 34px;
-  line-height: 1.08;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
@@ -1191,15 +1346,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  background: var(--field-bg);
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface-muted);
   color: var(--text-subtle);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .bill-search:focus-within {
   border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .bill-search input {
@@ -1212,6 +1371,12 @@ onUnmounted(() => {
   background: transparent;
   color: var(--text-strong);
   font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bill-search input::-webkit-search-cancel-button {
+  cursor: pointer;
 }
 
 .bill-search input::placeholder {
@@ -1233,16 +1398,36 @@ onUnmounted(() => {
   font-size: 18px;
 }
 
+.header-icon:hover,
+.icon-button:hover {
+  background: color-mix(in srgb, var(--header-icon-bg) 80%, var(--accent));
+}
+
+.header-icon:active,
+.icon-button:active,
+.add-bill-button:active,
+.add-item-row:active,
+.swipe-action:active,
+.recycle-actions button:active {
+  transform: scale(0.96);
+}
+
 .add-bill-button {
   width: auto;
+  height: 42px;
   gap: 6px;
-  padding: 0 14px;
-  border-radius: 12px;
+  padding: 0 16px;
+  border-radius: 999px;
   background: var(--accent-strong);
   color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
+  box-shadow: none;
+}
+
+.add-bill-button:hover {
+  filter: brightness(1.06);
 }
 
 .add-bill-button .el-icon {
@@ -1258,13 +1443,21 @@ onUnmounted(() => {
 .items-panel {
   margin-bottom: 14px;
   padding: 20px;
-  border-radius: 16px;
+  border: 0;
+  border-radius: 20px;
   background: var(--surface);
-  box-shadow: 0 14px 34px rgba(38, 56, 88, 0.08);
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.04), 0 4px 14px rgba(20, 40, 62, 0.04);
+}
+
+.items-panel {
+  margin-bottom: 0;
 }
 
 .header-bill-count {
+  color: var(--text-muted);
+  font-weight: 500;
   white-space: nowrap;
+  align-self: center;
 }
 
 .header-bill-count,
@@ -1278,28 +1471,45 @@ onUnmounted(() => {
 .bill-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .bill-swipe {
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.04), 0 4px 14px rgba(20, 40, 62, 0.04);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.bill-swipe:hover {
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.04), 0 8px 22px rgba(20, 40, 62, 0.07);
+}
+
+.bill-swipe :deep(.van-swipe-cell__right) {
+  display: flex;
+  padding: 8px 8px 8px 0;
 }
 
 .bill-card {
+  position: relative;
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 6px 12px;
-  padding: 13px 16px;
+  padding: 16px 18px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface);
   text-align: left;
+  cursor: pointer;
 }
 
-.bill-card:focus-visible {
+
+
+.home-page .bill-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -1316,7 +1526,7 @@ onUnmounted(() => {
 .bill-card-name {
   color: var(--text-strong);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1330,7 +1540,9 @@ onUnmounted(() => {
 
 .bill-card-amount {
   color: var(--accent-strong);
-  font-size: clamp(20px, 6.4vw, 26px);
+  font-size: clamp(19px, 5.6vw, 22px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   text-align: right;
@@ -1343,6 +1555,7 @@ onUnmounted(() => {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+  margin-top: 2px;
   color: var(--text-subtle);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -1357,8 +1570,15 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   gap: 8px;
-  padding: 34px 12px;
+  padding: 48px 16px;
+  border: 1px dashed var(--divider);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
   text-align: center;
+}
+
+.empty-state strong {
+  font-size: 16px;
 }
 
 .empty-state.compact {
@@ -1371,18 +1591,23 @@ onUnmounted(() => {
 
 .bill-editor {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .bill-editor-header {
   justify-content: space-between;
   gap: 8px;
+  padding-left: 10px;
+}
+
+.bill-title-fields {
+  padding-left: 10px;
 }
 
 .detail-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 12px;
   align-items: end;
 }
 
@@ -1395,18 +1620,28 @@ onUnmounted(() => {
 .text-input {
   width: 100%;
   min-width: 0;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 42%, var(--divider));
-  border-radius: 12px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1.5px dashed var(--divider);
+  border-radius: 10px;
   outline: 0;
-  background: color-mix(in srgb, var(--field-bg) 76%, var(--surface));
+  background: transparent;
   color: var(--text-main);
   font-size: 15px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
+.text-input:hover:not(:focus) {
+  border-color: var(--accent-border);
+}
+
+.text-input::placeholder {
+  color: var(--text-subtle);
+  opacity: 0.8;
+}
+
 .text-input:focus {
+  border-style: solid;
   border-color: var(--accent);
   background: var(--surface);
   box-shadow: 0 0 0 3px var(--accent-ring);
@@ -1478,15 +1713,33 @@ onUnmounted(() => {
 }
 
 .home-page :deep(.copy-bill-dialog .van-dialog__confirm) {
-  background: var(--accent-strong);
+  background: var(--submit-btn-bg);
   color: #fff;
+  box-shadow: var(--submit-btn-shadow);
+}
+
+.title-input,
+.subtitle-input {
+  justify-self: start;
+  width: auto;
+  min-width: 5em;
+  max-width: 100%;
+  margin-left: -10px;
+  field-sizing: content;
 }
 
 .title-input {
-  height: 54px;
+  flex: 0 1 auto;
+  height: 44px;
   color: var(--text-strong);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
+}
+
+.subtitle-input {
+  height: 34px;
+  color: var(--text-muted);
+  font-size: 14px;
 }
 
 .subtitle-input {
@@ -1495,37 +1748,44 @@ onUnmounted(() => {
 }
 
 .detail-total {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   justify-items: end;
-  min-width: 190px;
-  min-height: 92px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--stat-materials-bg);
-  box-shadow: var(--stat-light-shadow);
+  min-width: 200px;
+  min-height: 0;
+  padding: 14px 18px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--accent-strong);
 }
 
 .detail-total span {
   justify-self: start;
-  font-weight: 700;
+  color: var(--stat-income-text);
+  font-weight: 600;
+  opacity: 0.82;
 }
 
 .detail-total strong {
   align-self: center;
-  color: var(--accent-strong);
-  font-size: 32px;
+  color: var(--stat-income-text);
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1.05;
 }
 
 .detail-actions {
+  flex: none;
   gap: 6px;
 }
 
 .detail-actions .icon-button {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   font-size: 16px;
 }
@@ -1535,20 +1795,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 38px;
   padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--header-icon-bg);
-  color: var(--accent);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .section-row {
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .item-mode {
@@ -1556,7 +1811,7 @@ onUnmounted(() => {
   gap: 2px;
   padding: 3px;
   border-radius: 999px;
-  background: var(--surface-soft);
+  background: var(--surface-muted);
 }
 
 .item-mode button,
@@ -1573,21 +1828,29 @@ onUnmounted(() => {
 }
 
 .item-mode button {
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 12px;
   border-radius: 999px;
 }
 
+.item-mode button {
+  color: var(--text-muted);
+}
+
 .item-mode button[aria-pressed="true"] {
-  background: var(--header-icon-bg);
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(20, 40, 62, 0.1);
 }
 
 .item-group {
   min-width: 0;
   gap: 6px;
   padding: 0 0 8px;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 45%, var(--divider));
-  border-radius: 14px;
+  border: 1px solid var(--divider);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .item-group:not(:has(.item-swipe)) {
@@ -1598,10 +1861,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 3px;
-  min-height: 48px;
-  padding: 4px 6px;
-  border-radius: 13px;
-  background: var(--header-icon-bg);
+  min-height: 50px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-soft);
+}
+
+.item-group:not(:has(.item-swipe)) .item-group-header {
+  border-bottom: 0;
 }
 
 .group-name {
@@ -1636,8 +1903,10 @@ onUnmounted(() => {
 
 .group-total {
   flex: none;
+  margin-right: 2px;
   color: var(--accent-strong);
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -1661,16 +1930,28 @@ onUnmounted(() => {
 }
 
 .group-action {
-  min-width: 28px;
+  min-width: 30px;
+  min-height: 30px;
   padding: 0 5px;
+  border-radius: 8px;
+}
+
+.group-action:hover {
+  background: color-mix(in srgb, var(--surface) 70%, transparent) !important;
 }
 
 .drag-handle {
-  touch-action: pan-y pinch-zoom;
+  touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
   -webkit-touch-callout: none;
   cursor: grab;
   font-size: 19px;
+  opacity: 0.55;
+}
+
+.drag-handle:hover {
+  opacity: 1;
 }
 
 .drag-handle:active {
@@ -1686,39 +1967,83 @@ onUnmounted(() => {
   margin: 0 8px;
 }
 
+.items-panel.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.items-panel.is-dragging .drag-handle {
+  cursor: grabbing;
+}
+
 .drag-source {
-  opacity: 0.55;
+  position: relative;
+  z-index: 30;
+  pointer-events: none;
+  transition: box-shadow 0.18s ease !important;
+  will-change: transform;
+}
+
+.drag-source .item-row,
+.drag-source .item-group-header {
+  background: var(--surface);
+}
+
+.drag-source.item-swipe,
+.drag-source.item-group {
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 16px 36px rgba(20, 40, 62, 0.2) !important;
+  scale: 1.02;
+}
+
+.drag-source .drag-handle {
+  opacity: 1;
 }
 
 .drop-group {
-  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring) !important;
 }
 
-[data-drop-side="before"] {
-  box-shadow: 0 -3px var(--accent);
+.drag-source.item-group {
+  overflow: hidden;
 }
 
-[data-drop-side="after"] {
-  box-shadow: 0 3px var(--accent);
+.items-panel.is-dragging .item-group:not(.drag-source) {
+  overflow: visible;
+}
+
+.items-panel.is-dragging .item-group:not(.drag-source) .item-group-header {
+  border-radius: 16px 16px 0 0;
+}
+
+.items-panel.is-dragging .item-group:not(.drag-source):not(:has(.item-swipe)) .item-group-header {
+  border-radius: 16px;
 }
 
 .add-item-row {
-  width: 100%;
-  height: 66px;
+  height: 34px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 999px;
   color: var(--accent);
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--header-icon-bg) 82%, var(--surface)) 0%,
-      color-mix(in srgb, var(--surface-soft) 74%, var(--surface)) 100%
-    );
-  box-shadow:
-    0 10px 20px color-mix(in srgb, var(--accent-ring) 70%, transparent),
-    0 4px 12px rgba(38, 56, 88, 0.05),
-    var(--stat-light-shadow);
+  background: var(--header-icon-bg);
+  font-size: 13px;
+  white-space: nowrap;
 }
+
+.add-item-row .el-icon {
+  font-size: 14px;
+}
+
+.add-item-row:hover {
+  background: color-mix(in srgb, var(--header-icon-bg) 80%, var(--accent));
+}
+
+
 
 .item-list {
   display: grid;
@@ -1744,33 +2069,53 @@ onUnmounted(() => {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(104px, 142px);
-  gap: 12px;
+  gap: 10px;
   align-items: end;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 34%, var(--divider));
+  padding: 10px;
+  border: 1px solid var(--divider);
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--surface-soft) 0%, color-mix(in srgb, var(--surface-soft) 72%, var(--surface)) 100%);
-  box-shadow: 0 6px 16px rgba(38, 56, 88, 0.04);
+  background: var(--surface);
+  box-shadow: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.item-row:focus-within {
+  border-color: var(--accent-border);
+}
+
+.item-row .text-input {
+  height: 36px;
 }
 
 .item-row.has-created-at {
-  padding-top: 30px;
+  padding-top: 32px;
+}
+
+.item-group .item-row.grouped-item {
+  border-color: transparent;
 }
 
 .item-row.grouped-item {
-  grid-template-columns: auto minmax(0, 1fr) minmax(68px, 26%);
+  grid-template-columns: auto minmax(0, 1fr) minmax(92px, 32%);
   align-items: center;
   gap: 6px;
-  padding: 6px 8px 6px 3px;
+  padding: 6px 6px 6px 2px;
 }
 
 .grouped-item .text-input {
   height: 36px;
 }
 
+.item-name-field .text-input:not(:focus):not(:hover):not(:placeholder-shown) {
+  border-color: transparent;
+}
+
 .item-row.voided {
-  opacity: 0.62;
-  filter: saturate(0.45);
+  border-style: dashed;
+  background: var(--surface-muted);
+  box-shadow: none;
+  opacity: 0.6;
+  filter: saturate(0.3);
 }
 
 .item-row.voided .text-input {
@@ -1791,22 +2136,33 @@ onUnmounted(() => {
 
 .item-created-at {
   position: absolute;
-  right: 14px;
+  left: 14px;
+  right: auto;
   top: 10px;
   min-width: 96px;
-  text-align: right;
+  text-align: left;
   color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.02em;
   user-select: none;
 }
 
+.item-price-field .text-input:focus {
+  background: var(--surface);
+}
+
 .item-price-field .text-input {
+  padding: 0 8px;
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--header-icon-bg) 70%, var(--surface));
   color: var(--accent-strong);
+  font-size: 16px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -1817,7 +2173,7 @@ onUnmounted(() => {
   justify-content: center;
   flex-direction: column;
   gap: 4px;
-  width: 72px;
+  width: 68px;
   height: 100%;
   margin: 0;
   border: 0;
@@ -1826,6 +2182,10 @@ onUnmounted(() => {
   color: var(--accent);
   font-size: 12px;
   font-weight: 700;
+}
+
+.swipe-action .el-icon {
+  font-size: 18px;
 }
 
 .swipe-action.danger {
@@ -1868,8 +2228,9 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  padding: 12px;
-  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
   background: var(--surface-soft);
 }
 
@@ -1911,7 +2272,7 @@ onUnmounted(() => {
 
 @media (max-width: 520px) {
   .home-page {
-    padding: 10px;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
   }
 
   .page-header {
@@ -1921,6 +2282,19 @@ onUnmounted(() => {
 
   .page-header h1 {
     font-size: 26px;
+  }
+
+  .detail-total strong {
+    font-size: 26px;
+  }
+
+  .page-header.detail-header {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+  }
+
+  .page-header.detail-header h1 {
+    font-size: 17px;
   }
 
   .header-icon {
@@ -1935,7 +2309,7 @@ onUnmounted(() => {
   .bill-editor,
   .items-panel {
     padding: 14px;
-    border-radius: 12px;
+    border-radius: 18px;
   }
 
   .detail-summary {
@@ -1954,7 +2328,11 @@ onUnmounted(() => {
   .item-row {
     grid-template-columns: minmax(0, 1fr) minmax(82px, 96px);
     gap: 8px;
-    padding: 12px;
+    padding: 8px;
+  }
+
+  .item-row.has-created-at {
+    padding-top: 30px;
   }
 
   .item-field span {
@@ -1975,6 +2353,311 @@ onUnmounted(() => {
   .recycle-actions {
     justify-content: flex-end;
   }
+}
+
+
+/* ---------- detail refresh (vip-bill style) ---------- */
+.page-header.detail-header {
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--page-bg) 86%, transparent);
+  box-shadow: none;
+}
+
+.detail-header .header-icon,
+.detail-header .header-icon:hover {
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(20, 40, 62, 0.06);
+}
+
+.bill-detail-view .bill-editor {
+  position: relative;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 20px;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--stat-income-bg);
+  box-shadow: var(--submit-btn-shadow);
+  color: var(--stat-income-text);
+}
+
+.bill-detail-view .bill-editor::before {
+  content: "";
+  position: absolute;
+  top: -90px;
+  right: -70px;
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.bill-detail-view .bill-editor > * {
+  position: relative;
+}
+
+.bill-editor .text-input {
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #fff;
+}
+
+.bill-editor .text-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bill-editor .text-input:hover:not(:focus) {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.bill-editor .text-input:focus {
+  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.bill-editor .subtitle-input {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.bill-editor .icon-button,
+.bill-editor .icon-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.bill-editor .icon-button:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.bill-detail-view .detail-summary {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.bill-detail-view .detail-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 0 0 10px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bill-detail-view .detail-total span {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 1;
+}
+
+.bill-detail-view .detail-total strong {
+  color: #fff;
+  font-size: 38px;
+  text-align: left;
+}
+
+.bill-detail-view .items-panel {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bill-detail-view .section-row {
+  margin-bottom: 12px;
+}
+
+.bill-detail-view .item-mode {
+  background: color-mix(in srgb, var(--surface-muted) 70%, var(--divider));
+}
+
+.bill-detail-view .item-list {
+  gap: 10px;
+}
+
+.bill-detail-view .item-row {
+  border-color: transparent;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.04), 0 4px 14px rgba(20, 40, 62, 0.05);
+}
+
+.bill-detail-view .item-row.voided {
+  box-shadow: none;
+}
+
+.bill-detail-view .item-group {
+  border: 0;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.04), 0 4px 14px rgba(20, 40, 62, 0.05);
+}
+
+.bill-detail-view .item-group .item-row.grouped-item {
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.bill-detail-view .item-swipe,
+.bill-detail-view .item-swipe :deep(.van-swipe-cell__wrapper) {
+  border-radius: 16px;
+}
+
+@media (max-width: 520px) {
+  .bill-detail-view .bill-editor {
+    padding: 16px;
+    border-radius: 22px;
+  }
+
+  .bill-detail-view .items-panel {
+    padding: 0;
+  }
+
+  .bill-detail-view .detail-total strong {
+    font-size: 34px;
+  }
+}
+
+/* ---------- group card refresh ---------- */
+.bill-detail-view .item-list:has(> .item-group) {
+  gap: 16px;
+}
+
+.bill-detail-view .item-group {
+  gap: 2px;
+  padding: 0 0 4px;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(20, 40, 62, 0.05), 0 8px 24px rgba(20, 40, 62, 0.07);
+}
+
+.bill-detail-view .item-group:not(:has(.item-swipe)):not(:has(.item-group-footer)) {
+  padding-bottom: 0;
+}
+
+.bill-detail-view .item-group-header,
+.bill-detail-view .drag-source .item-group-header,
+.items-panel.is-dragging .item-group:not(.drag-source) .item-group-header {
+  gap: 2px;
+  min-height: 58px;
+  padding: 8px 10px 8px 6px;
+  border-bottom: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.bill-detail-view .item-group:has(.item-swipe) .item-group-header::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 1px;
+  background: var(--divider);
+}
+
+.bill-detail-view .item-group-header {
+  position: relative;
+}
+
+.bill-detail-view .item-group-header .drag-handle {
+  min-width: 26px;
+  padding: 0;
+  font-size: 16px;
+  opacity: 0.35;
+}
+
+.bill-detail-view .group-toggle {
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 4px;
+}
+
+.group-title {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bill-detail-view .group-toggle strong {
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-detail-view .group-count {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bill-detail-view .group-toggle .group-total {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.group-chevron {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.group-toggle[aria-expanded="false"] .group-chevron {
+  transform: rotate(-90deg);
+}
+
+.bill-detail-view .item-group-header input {
+  height: 38px;
+  margin-left: 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.item-group-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 10px 4px;
+}
+
+.group-add {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.group-add:hover {
+  background: var(--header-icon-bg);
+}
+
+.item-group-footer .group-action {
+  color: var(--text-muted);
+}
+
+.item-group-footer .group-action.danger:hover {
+  color: var(--danger-text);
 }
 
 </style>

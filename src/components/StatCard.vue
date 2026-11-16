@@ -26,9 +26,9 @@ defineEmits<{
   justify-content: flex-start;
   box-sizing: border-box;
   min-height: 92px;
-  padding: 10px;
+  padding: 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 14px;
   color: #ffffff;
   text-align: left;
   line-height: 1.2;
@@ -96,6 +96,8 @@ defineEmits<{
 .stat-card strong {
   margin-top: 6px;
   font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
