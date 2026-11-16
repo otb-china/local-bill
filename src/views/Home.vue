@@ -2552,7 +2552,7 @@ onUnmounted(() => {
 .items-panel.is-dragging .item-group:not(.drag-source) .item-group-header {
   gap: 2px;
   min-height: 58px;
-  padding: 8px 10px 8px 6px;
+  padding: 8px 10px 8px 11px;
   border-bottom: 0;
   border-radius: 0;
   background: transparent;
@@ -2589,7 +2589,6 @@ onUnmounted(() => {
 
 .bill-detail-view .item-group-header {
   min-width: 0;
-  padding-left: 11px;
 }
 
 .bill-detail-view .item-group-header .drag-handle:hover,
