@@ -168,7 +168,7 @@
                 v-if="groupNameEdit?.id === section.id"
                 v-focus
                 v-model="groupNameEdit.name"
-                class="text-input group-name"
+                class="text-input group-name-input"
                 aria-label="分组名称"
                 @keydown.enter="!$event.isComposing && finishGroupName(section.id)"
                 @keydown.esc.stop="groupNameEdit = undefined"
@@ -176,18 +176,39 @@
               />
               <button
                 v-else
-                class="group-toggle group-name"
+                class="group-name-button"
                 type="button"
+                title="点击修改分组名称"
+                @click="groupNameEdit = { id: section.id, name: section.name }"
+              >{{ section.name }}</button>
+              <button
+                class="group-toggle"
+                type="button"
+                :aria-label="collapsedGroups.has(section.id) ? '展开分组' : '收起分组'"
                 :aria-expanded="!collapsedGroups.has(section.id)"
                 @click="toggleGroup(section.id)"
               >
-                <span class="group-title">
-                  <strong>{{ section.name }}</strong>
-                  <span class="group-count">{{ section.items.length }} 项</span>
-                </span>
+                <span class="group-count">{{ section.items.length }} 项</span>
                 <strong class="group-total" title="分组合计">¥{{ formatMoney(sumBillItems(getValidItems(section.items))) }}</strong>
-                <el-icon class="group-chevron"><ArrowDown /></el-icon>
               </button>
+              <button class="group-action" type="button" aria-label="新增子项" title="新增子项" @click="addItem(section.id)">
+                <el-icon><Plus /></el-icon>
+              </button>
+              <button
+                v-if="itemSections.length > 1 && !section.items.length"
+                class="group-action danger"
+                type="button"
+                aria-label="删除分组"
+                title="删除分组"
+                @click="removeGroup(section.id)"
+              ><el-icon><Delete /></el-icon></button>
+              <button
+                class="group-action group-chevron-button"
+                type="button"
+                :aria-label="collapsedGroups.has(section.id) ? '展开分组' : '收起分组'"
+                :aria-expanded="!collapsedGroups.has(section.id)"
+                @click="toggleGroup(section.id)"
+              ><el-icon class="group-chevron"><ArrowDown /></el-icon></button>
             </div>
             <van-swipe-cell
               v-for="item in groupMode && collapsedGroups.has(section.id) ? [] : section.items"
@@ -247,27 +268,6 @@
                 </button>
               </template>
             </van-swipe-cell>
-            <div v-if="groupMode && !collapsedGroups.has(section.id)" class="item-group-footer">
-              <button class="group-add" type="button" @click="addItem(section.id)">
-                <el-icon><Plus /></el-icon>
-                <span>添加子项</span>
-              </button>
-              <button
-                class="group-action"
-                type="button"
-                aria-label="编辑分组名称"
-                title="编辑分组名称"
-                @click="groupNameEdit = { id: section.id, name: section.name }"
-              ><el-icon><Edit /></el-icon></button>
-              <button
-                v-if="itemSections.length > 1 && !section.items.length"
-                class="group-action danger"
-                type="button"
-                aria-label="删除分组"
-                title="删除分组"
-                @click="removeGroup(section.id)"
-              ><el-icon><Delete /></el-icon></button>
-            </div>
           </div>
         </div>
       </section>
@@ -371,7 +371,7 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { showConfirmDialog, showToast } from "vant";
-import { ArrowDown, Back, CircleClose, Clock, CopyDocument, Delete, Edit, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
+import { ArrowDown, Back, CircleClose, Clock, CopyDocument, Delete, Plus, Search, Setting, Share, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -2532,7 +2532,7 @@ onUnmounted(() => {
   box-shadow: 0 1px 2px rgba(20, 40, 62, 0.05), 0 8px 24px rgba(20, 40, 62, 0.07);
 }
 
-.bill-detail-view .item-group:not(:has(.item-swipe)):not(:has(.item-group-footer)) {
+.bill-detail-view .item-group:not(:has(.item-swipe)) {
   padding-bottom: 0;
 }
 
@@ -2561,39 +2561,82 @@ onUnmounted(() => {
   position: relative;
 }
 
-.bill-detail-view .item-group-header .drag-handle {
-  min-width: 26px;
+.bill-detail-view .item-group-header .drag-handle,
+.bill-detail-view .item-group .item-drag-handle {
+  flex: none;
+  width: 28px;
+  min-width: 28px;
   padding: 0;
-  font-size: 16px;
-  opacity: 0.35;
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+.bill-detail-view .item-group {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bill-detail-view .item-group-header {
+  min-width: 0;
+  padding-left: 11px;
+}
+
+.bill-detail-view .item-group-header .drag-handle:hover,
+.bill-detail-view .item-group .item-drag-handle:hover,
+.bill-detail-view .drag-source .drag-handle {
+  opacity: 1;
 }
 
 .bill-detail-view .group-toggle {
-  flex: 1;
+  flex: 1 0 auto;
   gap: 10px;
   min-width: 0;
   min-height: 40px;
-  padding: 0 4px;
+  padding: 0 4px 0 8px;
 }
 
-.group-title {
-  display: flex;
-  flex: 1;
-  align-items: baseline;
-  gap: 8px;
+.group-name-button,
+.bill-detail-view .item-group-header .group-name-input {
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
-}
-
-.bill-detail-view .group-toggle strong {
-  overflow: hidden;
+  max-width: none;
+  height: 34px;
+  min-height: 34px;
+  margin: 0 0 0 4px;
+  padding: 0 10px;
+  border: 1.5px dashed var(--divider);
+  border-radius: 10px;
+  background: transparent;
   color: var(--text-main);
+  font: inherit;
   font-size: 16px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 32px;
 }
 
+.group-name-button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.group-name-button:hover {
+  border-color: var(--accent);
+}
+
+.bill-detail-view .item-group-header .group-name-input {
+  field-sizing: content;
+  flex-shrink: 1;
+  min-width: 80px;
+  border-style: solid;
+}
+
+
 .bill-detail-view .group-count {
+  flex: 1;
+  text-align: left;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
@@ -2613,51 +2656,33 @@ onUnmounted(() => {
   transition: transform 0.2s ease;
 }
 
-.group-toggle[aria-expanded="false"] .group-chevron {
+.group-chevron-button[aria-expanded="false"] .group-chevron {
   transform: rotate(-90deg);
 }
 
-.bill-detail-view .item-group-header input {
-  height: 38px;
-  margin-left: 4px;
-  font-size: 15px;
-  font-weight: 700;
-}
 
-.item-group-footer {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 2px 10px 4px;
-}
-
-.group-add {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.group-add:hover {
-  background: var(--header-icon-bg);
-}
-
-.item-group-footer .group-action {
+.bill-detail-view .item-group-header .group-action {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
   color: var(--text-muted);
 }
 
-.item-group-footer .group-action.danger:hover {
+.bill-detail-view .item-group-header .group-action:hover {
+  background: var(--header-icon-bg) !important;
+  color: var(--accent);
+}
+
+.bill-detail-view .item-group-header .group-action.danger:hover {
+  background: var(--danger-bg) !important;
   color: var(--danger-text);
 }
 
+.bill-detail-view .item-group-header .group-chevron-button:hover {
+  background: transparent !important;
+}
+
+.bill-detail-view .item-group:has(.item-swipe) {
+  padding-bottom: 8px;
+}
 </style>
