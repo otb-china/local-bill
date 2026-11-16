@@ -85,7 +85,7 @@
             <button class="icon-button" type="button" aria-label="生成明细图片" title="生成明细图片" @click="shareBillImage">
               <el-icon aria-hidden="true"><Share /></el-icon>
             </button>
-            <button class="icon-button" type="button" aria-label="复制账单" title="复制账单" @click="copyActiveBill">
+            <button class="icon-button" type="button" aria-label="复制账单" title="复制账单" @click="openCopyBillDialog">
               <el-icon aria-hidden="true"><CopyDocument /></el-icon>
             </button>
           </div>
@@ -259,6 +259,20 @@
       </section>
     </main>
 
+    <van-dialog
+      v-model:show="copyBillDialog"
+      title="复制账单"
+      width="320px"
+      show-cancel-button
+      confirm-button-text="确认复制"
+      @confirm="copyActiveBill"
+    >
+      <label class="copy-bill-name">
+        <span>新账单名称</span>
+        <input v-model.trim="copyBillName" class="text-input" :placeholder="defaultCopyBillName" />
+      </label>
+    </van-dialog>
+
     <SettingsPopup
       v-model:show="settingsPopup"
       :theme-options="themeOptions"
@@ -379,6 +393,8 @@ const itemTimeTap = ref({
 const bills = ref<Bill[]>([]);
 const billSearch = ref("");
 const swipedBillId = ref("");
+const copyBillDialog = ref(false);
+const copyBillName = ref("");
 const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
 let billListScrollY = 0;
@@ -394,6 +410,7 @@ const currentThemeOption = computed(() => {
 });
 const themeStyle = computed(() => currentThemeOption.value.variables);
 const activeBill = computed(() => bills.value.find((bill) => bill.id === activeBillId.value));
+const defaultCopyBillName = computed(() => `${activeBill.value?.name || "未命名账单"}（复制）`);
 const sortedBills = computed(() => sortBillsByLatestItemCreatedDate(bills.value));
 const visibleBills = computed(() => {
   const keyword = billSearch.value.trim().toLowerCase();
@@ -518,14 +535,21 @@ function addBill() {
   activeBillId.value = bill.id;
 }
 
-function copyActiveBill() {
+function openCopyBillDialog() {
   if (!activeBill.value) return;
+  copyBillName.value = defaultCopyBillName.value;
+  copyBillDialog.value = true;
+}
+
+function copyActiveBill() {
+  if (!copyBillDialog.value || !activeBill.value) return;
+  copyBillDialog.value = false;
   const source = activeBill.value;
   const now = new Date().toISOString();
   const copy: Bill = {
     ...source,
     id: createId("bill"),
-    name: `${source.name}（复制）`,
+    name: copyBillName.value || defaultCopyBillName.value,
     groups: source.groups.map((group) => ({ ...group })),
     items: source.items.map((item) => ({ ...item, id: createId("item") })),
     createdAt: now,
@@ -1379,6 +1403,14 @@ onUnmounted(() => {
   border-color: var(--accent);
   background: var(--surface);
   box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.copy-bill-name {
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .title-input {
