@@ -261,16 +261,23 @@
 
     <van-dialog
       v-model:show="copyBillDialog"
-      title="复制账单"
-      width="320px"
+      class-name="copy-bill-dialog"
+      aria-labelledby="copy-bill-title"
+      width="min(340px, calc(100% - 40px))"
+      :overlay-style="{ background: 'rgba(18, 35, 49, 0.38)' }"
       show-cancel-button
       confirm-button-text="确认复制"
       @confirm="copyActiveBill"
     >
-      <label class="copy-bill-name">
-        <span>新账单名称</span>
-        <input v-model.trim="copyBillName" class="text-input" :placeholder="defaultCopyBillName" />
-      </label>
+      <template #title>
+        <div class="copy-bill-heading">
+          <span class="copy-bill-icon" aria-hidden="true"><el-icon><CopyDocument /></el-icon></span>
+          <h2 id="copy-bill-title">复制账单</h2>
+        </div>
+      </template>
+      <div class="copy-bill-name">
+        <input v-model.trim="copyBillName" class="text-input" aria-label="新账单名称" :placeholder="defaultCopyBillName" />
+      </div>
     </van-dialog>
 
     <SettingsPopup
@@ -1405,12 +1412,74 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
-.copy-bill-name {
+.home-page :deep(.copy-bill-dialog) {
+  border: 1px solid var(--divider);
+  border-radius: 20px;
+  box-shadow: 0 18px 52px rgba(18, 35, 49, 0.2);
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__header) {
+  padding: 20px 20px 0;
+  color: var(--text-strong);
+}
+
+.copy-bill-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.copy-bill-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.copy-bill-icon {
   display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--header-icon-bg);
+  color: var(--accent);
+  font-size: 17px;
+}
+
+.copy-bill-name {
+  padding: 16px 20px 0;
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__footer) {
+  justify-content: flex-end;
   gap: 8px;
   padding: 16px 20px 20px;
-  color: var(--text-muted);
-  font-size: 13px;
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__footer::after),
+.home-page :deep(.copy-bill-dialog .van-dialog__confirm::after) {
+  content: none;
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__footer .van-button) {
+  flex: none;
+  width: auto;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__cancel) {
+  background: var(--surface-muted);
+  color: var(--text-main);
+}
+
+.home-page :deep(.copy-bill-dialog .van-dialog__confirm) {
+  background: var(--accent-strong);
+  color: #fff;
 }
 
 .title-input {
