@@ -79,15 +79,22 @@
 
     <main v-else class="bill-detail-view">
       <section class="bill-editor">
+        <div class="bill-editor-header">
+          <label for="bill-name">BILL NAME</label>
+          <div class="detail-actions">
+            <button class="icon-button" type="button" aria-label="生成明细图片" title="生成明细图片" @click="shareBillImage">
+              <el-icon aria-hidden="true"><Share /></el-icon>
+            </button>
+            <button class="icon-button" type="button" aria-label="复制账单" title="复制账单" @click="copyActiveBill">
+              <el-icon aria-hidden="true"><CopyDocument /></el-icon>
+            </button>
+          </div>
+        </div>
+
         <div class="detail-summary">
           <div class="bill-title-fields">
-            <label class="field-label title-field">
-              <span>BILL NAME</span>
-              <input v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
-            </label>
-            <label class="field-label">
-              <input v-model.trim="activeBill.subtitle" class="text-input subtitle-input" aria-label="副标题" placeholder="副标题" @input="touchActiveBill" />
-            </label>
+            <input id="bill-name" v-model.trim="activeBill.name" class="text-input title-input" placeholder="账单名" @input="touchActiveBill" />
+            <input v-model.trim="activeBill.subtitle" class="text-input subtitle-input" aria-label="副标题" placeholder="副标题" @input="touchActiveBill" />
           </div>
 
           <div class="detail-total">
@@ -96,16 +103,6 @@
           </div>
         </div>
 
-        <div class="detail-actions">
-          <button class="text-action" type="button" @click="shareBillImage">
-            <el-icon><Share /></el-icon>
-            <span>生成明细图片</span>
-          </button>
-          <button class="text-action" type="button" @click="copyActiveBill">
-            <el-icon><CopyDocument /></el-icon>
-            <span>复制账单</span>
-          </button>
-        </div>
       </section>
 
       <section
@@ -179,6 +176,7 @@
                 <strong>{{ section.name }}</strong>
                 <span class="group-count">{{ section.items.length }} 项</span>
               </button>
+              <strong class="group-total" title="分组合计">¥{{ formatMoney(sumBillItems(getValidItems(section.items))) }}</strong>
               <button
                 class="group-action"
                 type="button"
@@ -1014,9 +1012,16 @@ function createBillImage(bill: Bill) {
   let y = listStartY;
   for (const section of sections) {
     if (isGrouped) {
+      const subtotal = `¥${formatMoney(sumBillItems(section.items))}`;
+      const subtotalX = width - 112;
       ctx.fillStyle = "#203747";
       ctx.font = "700 26px Arial, sans-serif";
-      ctx.fillText(section.name, 88, y - 10, width - 176);
+      const nameMaxWidth = subtotalX - 88 - ctx.measureText(subtotal).width - 24;
+      ctx.fillText(section.name, 88, y - 10, nameMaxWidth);
+      ctx.fillStyle = "#1f6b7b";
+      ctx.textAlign = "right";
+      ctx.fillText(subtotal, subtotalX, y - 10);
+      ctx.textAlign = "left";
       y += groupHeaderHeight;
     }
 
@@ -1132,6 +1137,7 @@ onUnmounted(() => {
 }
 
 .header-actions,
+.bill-editor-header,
 .detail-actions,
 .section-row,
 .item-row {
@@ -1232,7 +1238,7 @@ onUnmounted(() => {
 
 .header-bill-count,
 .empty-state span,
-.field-label span,
+.bill-editor-header label,
 .detail-total span {
   color: var(--text-muted);
   font-size: 12px;
@@ -1334,7 +1340,12 @@ onUnmounted(() => {
 
 .bill-editor {
   display: grid;
-  gap: 18px;
+  gap: 7px;
+}
+
+.bill-editor-header {
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .detail-summary {
@@ -1347,12 +1358,6 @@ onUnmounted(() => {
 .bill-title-fields {
   display: grid;
   gap: 12px;
-  min-width: 0;
-}
-
-.field-label {
-  display: grid;
-  gap: 7px;
   min-width: 0;
 }
 
@@ -1414,11 +1419,16 @@ onUnmounted(() => {
 }
 
 .detail-actions {
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
-.text-action,
+.detail-actions .icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 16px;
+}
+
 .add-item-row {
   display: inline-flex;
   align-items: center;
@@ -1520,6 +1530,13 @@ onUnmounted(() => {
 .group-count {
   color: var(--text-muted);
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.group-total {
+  flex: none;
+  color: var(--accent-strong);
+  font-size: 14px;
   white-space: nowrap;
 }
 
