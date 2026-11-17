@@ -10,6 +10,7 @@ lerna-debug.log*
 manage-config
 node_modules
 dist
+docs
 stock-statistics
 dist-ssr
 *.local
