@@ -1272,11 +1272,7 @@ onUnmounted(() => {
   gap: 10px;
   margin: -12px -12px 14px;
   padding: calc(16px + env(safe-area-inset-top)) max(18px, calc((100vw - 780px) / 2 + 18px)) 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--divider) 70%, transparent);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  box-shadow: none;
-  backdrop-filter: saturate(180%) blur(16px);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  background: var(--page-bg);
 }
 
 .detail-header {
@@ -2370,7 +2366,7 @@ onUnmounted(() => {
 /* ---------- detail refresh (vip-bill style) ---------- */
 .page-header.detail-header {
   border-bottom: 0;
-  background: color-mix(in srgb, var(--page-bg) 86%, transparent);
+  background: var(--page-bg);
   box-shadow: none;
 }
 
