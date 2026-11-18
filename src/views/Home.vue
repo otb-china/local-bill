@@ -1357,7 +1357,8 @@ onUnmounted(() => {
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: var(--surface);
+  box-shadow: var(--shadow);
   color: var(--text-subtle);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -2370,8 +2371,8 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.detail-header .header-icon,
-.detail-header .header-icon:hover {
+.page-header .header-icon,
+.page-header .header-icon:hover {
   background: var(--surface);
   box-shadow: 0 2px 10px rgba(20, 40, 62, 0.06);
 }
