@@ -1,7 +1,8 @@
 import { computed, ref, type Ref } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
-import { LStorage } from "@/utils/localStorage.ts";
+import { storageKeys } from "@/utils/toolStorage";
+import { LStorage, reportSaveError } from "@/utils/localStorage.ts";
 import { mergeBills, normalizeBills, normalizeDeletedBills } from "@/utils/billData.ts";
 import type { Bill, DeletedBill, LocalBillBackupData } from "@/types/bill";
 
@@ -70,18 +71,22 @@ export function useBackupActions(options: UseBackupActionsOptions) {
       title: "提示",
       message: "确认清除所有账单数据吗？",
       width: "250px",
-    }).then(() => {
+    }).then(async () => {
+      try {
+        await Promise.all([LStorage.new(storageKeys.bills).remove(), LStorage.new(storageKeys.recycleBin).remove()]);
+      } catch (error) {
+        reportSaveError(error);
+        return;
+      }
       options.bills.value = [];
       options.deletedBills.value = [];
-      LStorage.new("localBillData").remove();
-      LStorage.new("localBillRecycleBin").remove();
       options.settingsPopup.value = false;
       showToast("数据已重置");
     }).catch(() => {
     });
   }
 
-  function importData() {
+  async function importData() {
     try {
       const parsedData = JSON.parse(importInfo.value.dataStr) as LocalBillBackupData;
       if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
@@ -94,15 +99,19 @@ export function useBackupActions(options: UseBackupActionsOptions) {
       }
       const mergedBills = mergeBills(options.bills.value, bills);
       const mergedDeletedBills = mergeBills(options.deletedBills.value, deletedBills);
-      LStorage.new("localBillData").setter(mergedBills);
-      LStorage.new("localBillRecycleBin").setter(mergedDeletedBills);
+      await Promise.all([
+        LStorage.new(storageKeys.bills).setter(mergedBills),
+        LStorage.new(storageKeys.recycleBin).setter(mergedDeletedBills),
+      ]);
       options.initData();
       importExportInfo.value.show = false;
       importInfo.value.dataStr = "";
       importInfo.value.fileName = "";
       showToast("总数据合并导入成功");
-    } catch {
-      showToast("导入失败，请检查备份文件");
+    } catch (error) {
+      showToast(error instanceof DOMException && error.name === "QuotaExceededError"
+        ? "存储空间不足，导入的数据未保存，请保留备份文件"
+        : "导入失败，请检查备份文件");
     }
   }
 

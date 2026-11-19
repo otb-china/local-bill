@@ -376,7 +376,8 @@ import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
 import { useBackupActions } from "@/composables/useBackupActions";
-import { LStorage } from "@/utils/localStorage.ts";
+import { storageKeys } from "@/utils/toolStorage";
+import { LStorage, reportSaveError } from "@/utils/localStorage.ts";
 import {
   createEmptyBill,
   createEmptyBillItem,
@@ -422,9 +423,9 @@ const deletedBills = ref<DeletedBill[]>([]);
 const activeBillId = ref("");
 let billListScrollY = 0;
 
-const billStorage = LStorage.new("localBillData");
-const recycleStorage = LStorage.new("localBillRecycleBin");
-const themeStorage = LStorage.new("localBillTheme");
+const billStorage = LStorage.new(storageKeys.bills);
+const recycleStorage = LStorage.new(storageKeys.recycleBin);
+const themeStorage = LStorage.new(storageKeys.theme);
 const itemTimeMinDate = new Date(2020, 0, 1);
 const itemTimeMaxDate = new Date(2099, 11, 31);
 
@@ -524,23 +525,23 @@ function billTotal(bill: Bill) {
 
 function saveBills() {
   if (bills.value.length) {
-    billStorage.setter(bills.value);
+    void billStorage.setter(bills.value).catch(reportSaveError);
   } else {
-    billStorage.remove();
+    void billStorage.remove().catch(reportSaveError);
   }
 }
 
 function saveDeletedBills() {
   if (deletedBills.value.length) {
-    recycleStorage.setter(deletedBills.value);
+    void recycleStorage.setter(deletedBills.value).catch(reportSaveError);
   } else {
-    recycleStorage.remove();
+    void recycleStorage.remove().catch(reportSaveError);
   }
 }
 
 function setTheme(theme: ThemeKey) {
   currentTheme.value = theme;
-  themeStorage.setter(theme);
+  void themeStorage.setter(theme).catch(reportSaveError);
 }
 
 function init() {
